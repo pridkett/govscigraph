@@ -10,8 +10,11 @@
  */
 package com.ibm.research.govsci.graph;
 
+import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.Date;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.TimeZone;
 
 import org.slf4j.Logger;
@@ -53,7 +56,7 @@ public class BlueprintsBase {
 		
 		manager = TransactionalGraphHelper.createCommitManager((TransactionalGraph) graph, COMMITMGR_COMMITS);
 
-		log.info("attempting to fetch index: {}", INDEX_TYPE);
+		log.debug("attempting to fetch index: {}", INDEX_TYPE);
 		typeidx = getOrCreateIndex(INDEX_TYPE);
 
 		dateFormatter = new SimpleDateFormat(DATE_FORMAT);
@@ -96,7 +99,16 @@ public class BlueprintsBase {
 		log.trace("Getting vertex index: {}", idxname);
 		return getOrCreateIndex(idxname, Vertex.class);
 	}
-	
+
+	/**
+	 * Helper function to get Edge indexes
+	 * 
+	 * @param idxname the name of the index to retrieve
+	 * @return the index if it exists, or a new index if it does not
+	 */
+	public Index<Edge> getOrCreateEdgeIndex(String idxname) {
+		return (Index<Edge>)getOrCreateIndex(idxname, Edge.class);
+	}
 	
 	public Edge createEdgeIfNotExist(Object id, Vertex outVertex, Vertex inVertex, String edgeLabel) {
 		for (Edge e : outVertex.getOutEdges(edgeLabel)) {
@@ -109,6 +121,12 @@ public class BlueprintsBase {
 	}
 	public Edge createEdgeIfNotExist(Vertex outVertex, Vertex inVertex, String edgeLabel) {
 		return createEdgeIfNotExist(null, outVertex, inVertex, edgeLabel);
+	}
+	public Edge createEdgeIfNotExist(Object id, Vertex outVertex, Vertex inVertex, StringableEnum labelType) {
+		return createEdgeIfNotExist(id, outVertex, inVertex, labelType.toString());		
+	}
+	public Edge createEdgeIfNotExist(Vertex outVertex, Vertex inVertex, StringableEnum labelType) {
+		return createEdgeIfNotExist(null, outVertex, inVertex, labelType.toString());
 	}
 	
 	
@@ -145,6 +163,60 @@ public class BlueprintsBase {
 		return node;
 	}
 	
+	protected Vertex getOrCreateVertexHelper(String idcol, Object idval, StringableEnum vertexType, Index <Vertex> index) {
+		return getOrCreateVertexHelper(idcol, idval, vertexType.toString(), index);
+	}
+	
+	/**
+	 * Helper function that gets all of the vertices of a particular type from
+	 * the database provided they have not been updated in age days.
+	 * 
+	 * Vertices that lack a last_updated parameter are always returned
+	 * 
+	 * FIXME: right now this does NOT use indexes
+	 * FIXME: is this function EVER used? Maybe deprecate?
+	 * 
+	 * @param age number of days since last_updated
+	 * @param idxname the name of the index to use (currently ignored)
+	 * @param vtxtype the type of vertex to examine
+	 * @param namefield the name of the field to return in the set
+	 * @return
+	 */
+	public Set<String> getVertexHelper(double age, String idxname, StringableEnum vtxtype, String fieldname) {
+		Set<String> s = new HashSet<String>();
+		// FIXME: How do we get all of the values from an index?
+		// Right now we iterate over all of the nodes, which is CRAPTASTIC
+		for (Vertex vtx: graph.getVertices()) {
+			Set<String> props = vtx.getPropertyKeys();
+			if (props.contains("type") && vtx.getProperty("type").equals(vtxtype)
+					&& props.contains("username")) {
+				try {
+					if (!props.contains("last_updated") ||
+							dateDifference(new Date(), dateFormatter.parse((String)vtx.getProperty("last_updated"))) > age)
+						s.add((String)vtx.getProperty(fieldname));
+				} catch (ParseException e) {
+					log.info("Error parsing date: " + vtx.getProperty("last_updated"));
+				}
+			}
+		}
+		return s;
+	}
+	
+	/**
+	 * Simple helper function that subtracts d2 from d1
+	 * 
+	 * @param d1
+	 * @param d2
+	 * @return difference in days as a double
+	 */
+	public double dateDifference(Date d1, Date d2) {
+		double diff = (d1.getTime() - d2.getTime())/1000/86400;
+		log.info("Date1: " + d1.getTime());
+		log.info("Date2: " + d2.getTime());
+		log.info("Difference: " + diff);
+		return diff;
+	}
+	
 	/**
 	 * Adds the object to the index only if it isn't already there
 	 * 
@@ -165,35 +237,42 @@ public class BlueprintsBase {
 	public void setProperty(Element elem, String propname, String property) {
 		if (property != null && !property.trim().equals("")) elem.setProperty(propname, property);
 		log.trace("{} = {}", propname, property);
+		manager.incrCounter();
 	}
 	public void setProperty(Element elem, String propname, Date propdate) {
 		if (propdate != null) {
 			elem.setProperty(propname, dateFormatter.format(propdate));
 			log.trace("{} = {}", propname, dateFormatter.format(propdate));
+			manager.incrCounter();
 		} else {
-			log.trace("{} = null", propname);
+			log.trace("{} = null (not setting property)", propname);
 		}
 	}
 	public void setProperty(Element elem, String propname, int propvalue) {
 		elem.setProperty(propname, propvalue);
 		log.trace("{} = {}", propname, propvalue);
+		manager.incrCounter();
 	}
 	public void setProperty(Element elem, String propname, long propvalue) {
 		elem.setProperty(propname, propvalue);
 		log.trace("{} = {}", propname, propvalue);
+		manager.incrCounter();
 	}	
 	public void setProperty(Element elem, String propname, double propvalue) {
 		elem.setProperty(propname, propvalue);
 		log.trace("{} = {}", propname, propvalue);
+		manager.incrCounter();
 	}
 	public void setProperty(Element elem, String propname, boolean propvalue) {
 		elem.setProperty(propname, propvalue);
 		log.trace("{} = {}", propname, propvalue);
+		manager.incrCounter();
 	}
 	public void setProperty(Element elem, String propname, Object propvalue) {
 		if (propvalue != null) {
 			elem.setProperty(propname, propvalue);
 			log.trace("{} = {}", propname, propvalue);
+			manager.incrCounter();
 		}
 	}
 
@@ -201,13 +280,23 @@ public class BlueprintsBase {
 		if (elem.getProperty(key) != null) return false;
 		elem.setProperty(key, value);
 		log.trace("Setting key: {} = {}", key, value.toString());
+		manager.incrCounter();
 		return true;
 	}
 	
 	public void shutdown() {
 		log.info("Shutting down graph database engine");
-		manager.close();
+		try {
+			manager.close();
+		} catch (RuntimeException e) {
+			if (e.getMessage().equals("Turn off automatic transactions to use manual transaction handling")) {
+				log.warn("RuntimeException when attempting to close transaction manager. Ignoring, but this may be a problem with BlueprintsBase");
+			} else {
+				log.error("RuntimeException hit when closing TransactionManager:", e);
+			}
+		}
 		graph.shutdown();
+		log.trace("Graph shutdown complete");
 	}
 
 }
