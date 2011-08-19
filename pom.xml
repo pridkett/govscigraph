@@ -46,7 +46,7 @@
   <properties>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <slf4j.version>1.6.1</slf4j.version>
-    <blueprints.version>0.8</blueprints.version>
+    <blueprints.version>0.9</blueprints.version>
     <junit.version>3.8.1</junit.version>
     <logback.version>0.9.29</logback.version>
   </properties>

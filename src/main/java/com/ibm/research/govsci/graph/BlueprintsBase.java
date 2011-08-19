@@ -30,7 +30,7 @@ import com.tinkerpop.blueprints.pgm.impls.neo4j.Neo4jGraph;
 import com.tinkerpop.blueprints.pgm.util.TransactionalGraphHelper;
 import com.tinkerpop.blueprints.pgm.util.TransactionalGraphHelper.CommitManager;
 
-public class BlueprintsBase {
+public class BlueprintsBase implements Shutdownable {
 	private Logger log = null;
 	private static final int COMMITMGR_COMMITS = 2000;
 	protected IndexableGraph graph = null;
