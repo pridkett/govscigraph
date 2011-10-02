@@ -3,11 +3,29 @@
  * 
  * This library was originally developed for a joint research
  * project with the University of Nebraska, Lincoln under terms
- * of the Joint Study Agreement between IBM and UNL. According
- * to the terms of that agreement this package is licensed under
- * the Apache Public License 2.0 and may be freely redistributed
- * according to that license.
+ * of the Joint Study Agreement between IBM and UNL.
+ *
+ * Copyright (c) 2011 IBM Corporation
+ *
+ * This library was originally developed for a joint research
+ * project with the University of Nebraska, Lincoln under terms
+ * of the Joint Study Agreement between IBM and UNL.
+ * 
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *    http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *
+ * @author Patrick Wagstrom <patrick@wagstrom.net>
  */
+
 package com.ibm.research.govsci.graph;
 
 import java.text.ParseException;
@@ -27,14 +45,12 @@ import com.tinkerpop.blueprints.pgm.IndexableGraph;
 import com.tinkerpop.blueprints.pgm.TransactionalGraph;
 import com.tinkerpop.blueprints.pgm.Vertex;
 import com.tinkerpop.blueprints.pgm.impls.neo4j.Neo4jGraph;
-import com.tinkerpop.blueprints.pgm.util.TransactionalGraphHelper;
-import com.tinkerpop.blueprints.pgm.util.TransactionalGraphHelper.CommitManager;
+import com.tinkerpop.blueprints.pgm.impls.rexster.RexsterGraph;
+import com.tinkerpop.blueprints.pgm.impls.tg.TinkerGraph;
 
 public class BlueprintsBase implements Shutdownable {
 	private Logger log = null;
-	private static final int COMMITMGR_COMMITS = 2000;
 	protected IndexableGraph graph = null;
-	protected CommitManager manager = null;
 	protected SimpleDateFormat dateFormatter = null;
 	private static final String DATE_FORMAT = "yyyy-MM-dd'T'HH:mm:ssZ";
 	
@@ -49,13 +65,16 @@ public class BlueprintsBase implements Shutdownable {
 		if (eng.equals("neo4j")) {
 			log.info("Opening neo4j graph at: {}", dburl);
 			graph = new Neo4jGraph(dburl);
+		} else if (eng.equals("rexster")) {
+			log.info("Opening rexster graph at: {}", dburl);
+			graph = new RexsterGraph(dburl);
+		} else if (eng.equals("tinkergraph")) {
+			graph = new TinkerGraph();
 		} else {
 			log.error("Undefined database engine: {}", eng);
 			System.exit(-1);
 		}
 		
-		manager = TransactionalGraphHelper.createCommitManager((TransactionalGraph) graph, COMMITMGR_COMMITS);
-
 		log.debug("attempting to fetch index: {}", INDEX_TYPE);
 		typeidx = getOrCreateIndex(INDEX_TYPE);
 
@@ -115,8 +134,7 @@ public class BlueprintsBase implements Shutdownable {
 			if (e.getInVertex().equals(inVertex)) return e;
 		}
 		Edge re = graph.addEdge(id,  outVertex, inVertex, edgeLabel);
-		re.setProperty("created_at", dateFormatter.format(new Date()));
-		manager.incrCounter();
+		re.setProperty("sys:created_at", dateFormatter.format(new Date()));
 		return re;
 	}
 	public Edge createEdgeIfNotExist(Vertex outVertex, Vertex inVertex, String edgeLabel) {
@@ -142,9 +160,8 @@ public class BlueprintsBase implements Shutdownable {
 	protected Vertex createNakedVertex(String vertexType) {
 		Vertex node = graph.addVertex(null);
 		node.setProperty("type", vertexType.toString());
-		node.setProperty("created_at", dateFormatter.format(new Date()));
+		node.setProperty("sys:created_at", dateFormatter.format(new Date()));
 		typeidx.put("type", vertexType.toString(), node);
-		manager.incrCounter();
 		return node;
 	}
 	
@@ -176,6 +193,7 @@ public class BlueprintsBase implements Shutdownable {
 	 * FIXME: right now this does NOT use indexes
 	 * FIXME: is this function EVER used? Maybe deprecate?
 	 * 
+	 * @deprecated
 	 * @param age number of days since last_updated
 	 * @param idxname the name of the index to use (currently ignored)
 	 * @param vtxtype the type of vertex to examine
@@ -205,6 +223,7 @@ public class BlueprintsBase implements Shutdownable {
 	/**
 	 * Simple helper function that subtracts d2 from d1
 	 * 
+	 * @deprecated
 	 * @param d1
 	 * @param d2
 	 * @return difference in days as a double
@@ -215,6 +234,24 @@ public class BlueprintsBase implements Shutdownable {
 		log.info("Date2: " + d2.getTime());
 		log.info("Difference: " + diff);
 		return diff;
+	}
+	
+	/**
+	 * Passthrough function for setting the transaction buffer size
+	 * 
+	 * This function does a naked cast to a TransactionalGraph, so I'd imagine that
+	 * this could cause some problems later down the line. For right now on
+	 * neo4j and rexster we should be fine.
+	 * 
+	 * @param bufferSize the number of modifications allowed between commits
+	 */
+	public void setMaxBufferSize(int bufferSize) {
+		if (bufferSize == 0) {
+			log.warn("Transaction Buffer size set to 0, transactions will be MANUAL");
+		} else {
+			log.debug("Transaction buffer size set to {}", bufferSize);
+		}
+		((TransactionalGraph)graph).setMaxBufferSize(bufferSize);
 	}
 	
 	/**
@@ -237,13 +274,11 @@ public class BlueprintsBase implements Shutdownable {
 	public void setProperty(Element elem, String propname, String property) {
 		if (property != null && !property.trim().equals("")) elem.setProperty(propname, property);
 		log.trace("{} = {}", propname, property);
-		manager.incrCounter();
 	}
 	public void setProperty(Element elem, String propname, Date propdate) {
 		if (propdate != null) {
 			elem.setProperty(propname, dateFormatter.format(propdate));
 			log.trace("{} = {}", propname, dateFormatter.format(propdate));
-			manager.incrCounter();
 		} else {
 			log.trace("{} = null (not setting property)", propname);
 		}
@@ -251,28 +286,23 @@ public class BlueprintsBase implements Shutdownable {
 	public void setProperty(Element elem, String propname, int propvalue) {
 		elem.setProperty(propname, propvalue);
 		log.trace("{} = {}", propname, propvalue);
-		manager.incrCounter();
 	}
 	public void setProperty(Element elem, String propname, long propvalue) {
 		elem.setProperty(propname, propvalue);
 		log.trace("{} = {}", propname, propvalue);
-		manager.incrCounter();
 	}	
 	public void setProperty(Element elem, String propname, double propvalue) {
 		elem.setProperty(propname, propvalue);
 		log.trace("{} = {}", propname, propvalue);
-		manager.incrCounter();
 	}
 	public void setProperty(Element elem, String propname, boolean propvalue) {
 		elem.setProperty(propname, propvalue);
 		log.trace("{} = {}", propname, propvalue);
-		manager.incrCounter();
 	}
 	public void setProperty(Element elem, String propname, Object propvalue) {
 		if (propvalue != null) {
 			elem.setProperty(propname, propvalue);
 			log.trace("{} = {}", propname, propvalue);
-			manager.incrCounter();
 		}
 	}
 
@@ -280,21 +310,11 @@ public class BlueprintsBase implements Shutdownable {
 		if (elem.getProperty(key) != null) return false;
 		elem.setProperty(key, value);
 		log.trace("Setting key: {} = {}", key, value.toString());
-		manager.incrCounter();
 		return true;
 	}
 	
 	public void shutdown() {
 		log.info("Shutting down graph database engine");
-		try {
-			manager.close();
-		} catch (RuntimeException e) {
-			if (e.getMessage().equals("Turn off automatic transactions to use manual transaction handling")) {
-				log.warn("RuntimeException when attempting to close transaction manager. Ignoring, but this may be a problem with BlueprintsBase");
-			} else {
-				log.error("RuntimeException hit when closing TransactionManager:", e);
-			}
-		}
 		graph.shutdown();
 		log.trace("Graph shutdown complete");
 	}
