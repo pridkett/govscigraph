@@ -1,10 +1,8 @@
 /**
  * BlueprintsBase.java
- * 
- * This library was originally developed for a joint research
- * project with the University of Nebraska, Lincoln under terms
- * of the Joint Study Agreement between IBM and UNL.
  *
+ * A variety of abstractions useful for graph databases.
+ * 
  * Copyright (c) 2011 IBM Corporation
  *
  * This library was originally developed for a joint research
@@ -145,6 +143,19 @@ public class BlueprintsBase implements Shutdownable {
 	}
 	public Edge createEdgeIfNotExist(Vertex outVertex, Vertex inVertex, StringableEnum labelType) {
 		return createEdgeIfNotExist(null, outVertex, inVertex, labelType.toString());
+	}
+	
+	/**
+	 * Wrapper function for removing edges.
+	 * 
+	 * This really doesn't do much other than abstract away the actual graph,
+	 * which may allow us to integrate with other databases in the future.
+	 * Likewise it may also work for removing edges from indices if they exist.
+	 * 
+	 * @param e
+	 */
+	public void removeEdge(Edge e) {
+		graph.removeEdge(e);
 	}
 	
 	
