@@ -43,6 +43,7 @@ import com.tinkerpop.blueprints.pgm.IndexableGraph;
 import com.tinkerpop.blueprints.pgm.TransactionalGraph;
 import com.tinkerpop.blueprints.pgm.Vertex;
 import com.tinkerpop.blueprints.pgm.impls.neo4j.Neo4jGraph;
+import com.tinkerpop.blueprints.pgm.impls.neo4jbatch.Neo4jBatchGraph;
 import com.tinkerpop.blueprints.pgm.impls.rexster.RexsterGraph;
 import com.tinkerpop.blueprints.pgm.impls.tg.TinkerGraph;
 
@@ -68,6 +69,9 @@ public class BlueprintsBase implements Shutdownable {
 			graph = new RexsterGraph(dburl);
 		} else if (eng.equals("tinkergraph")) {
 			graph = new TinkerGraph();
+		} else if (eng.equals("neo4jbatch")) {
+			log.info("Opening neo4j batch graph at: {}", dburl);
+			graph = new Neo4jBatchGraph(dburl);
 		} else {
 			log.error("Undefined database engine: {}", eng);
 			System.exit(-1);
@@ -78,6 +82,15 @@ public class BlueprintsBase implements Shutdownable {
 
 		dateFormatter = new SimpleDateFormat(DATE_FORMAT);
 		dateFormatter.setTimeZone(TimeZone.getTimeZone("UTC"));
+	}
+	
+	/**
+	 * Drops an index from the specific graph
+	 * 
+	 * @param idxname the name of the index to drop
+	 */
+	public void dropIndex(String idxname) {
+		graph.dropIndex(idxname);
 	}
 	
 	/**
