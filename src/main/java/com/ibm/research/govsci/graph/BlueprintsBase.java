@@ -30,6 +30,7 @@ import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Set;
 import java.util.TimeZone;
 
@@ -44,12 +45,14 @@ import com.tinkerpop.blueprints.pgm.TransactionalGraph;
 import com.tinkerpop.blueprints.pgm.Vertex;
 import com.tinkerpop.blueprints.pgm.impls.neo4j.Neo4jGraph;
 import com.tinkerpop.blueprints.pgm.impls.neo4jbatch.Neo4jBatchGraph;
+import com.tinkerpop.blueprints.pgm.impls.orientdb.OrientGraph;
 import com.tinkerpop.blueprints.pgm.impls.rexster.RexsterGraph;
 import com.tinkerpop.blueprints.pgm.impls.tg.TinkerGraph;
 
 public class BlueprintsBase implements Shutdownable {
 	private Logger log = null;
 	protected IndexableGraph graph = null;
+	protected TransactionalGraph tgraph = null;
 	protected SimpleDateFormat dateFormatter = null;
 	private static final String DATE_FORMAT = "yyyy-MM-dd'T'HH:mm:ssZ";
 	
@@ -57,21 +60,40 @@ public class BlueprintsBase implements Shutdownable {
 
 	protected Index<Vertex> typeidx = null;
 	
-	public BlueprintsBase(String engine, String dburl) {
+	/**
+	 * Full constructor that takes an engine, a url, and a map for a configuration
+	 * @param engine name of the engine
+	 * @param dburl url of the database for the engine
+	 * @param config parameters for the engine
+	 */
+	public BlueprintsBase(String engine, String dburl, Map<String, String> config) {		
 		log = LoggerFactory.getLogger(BlueprintsBase.class);
 		String eng = engine.toLowerCase().trim();
 		log.debug("Requested database: {} url: {}", eng, dburl);
 		if (eng.equals("neo4j")) {
 			log.info("Opening neo4j graph at: {}", dburl);
-			graph = new Neo4jGraph(dburl);
+			graph = new Neo4jGraph(dburl, config);
+			tgraph = (TransactionalGraph) graph;
 		} else if (eng.equals("rexster")) {
+			log.warn("Configuration parameters passed to RexsterGraph - Ignored");
 			log.info("Opening rexster graph at: {}", dburl);
 			graph = new RexsterGraph(dburl);
 		} else if (eng.equals("tinkergraph")) {
+			log.warn("Configuration parameters passed to TinkerGraph - Ignored");
 			graph = new TinkerGraph();
 		} else if (eng.equals("neo4jbatch")) {
 			log.info("Opening neo4j batch graph at: {}", dburl);
-			graph = new Neo4jBatchGraph(dburl);
+			graph = new Neo4jBatchGraph(dburl, config);
+			tgraph = (TransactionalGraph) graph;
+		} else if (eng.equals("orientdb")) {
+			String username = config.get("username");
+			String password = config.get("password");
+			if (username != null && password != null) {
+				graph = new OrientGraph(dburl, username, password);
+			} else {
+				graph = new OrientGraph(dburl);
+			}
+			tgraph = (TransactionalGraph) graph;
 		} else {
 			log.error("Undefined database engine: {}", eng);
 			System.exit(-1);
@@ -82,6 +104,16 @@ public class BlueprintsBase implements Shutdownable {
 
 		dateFormatter = new SimpleDateFormat(DATE_FORMAT);
 		dateFormatter.setTimeZone(TimeZone.getTimeZone("UTC"));
+	}
+	
+	/**
+	 * Simple constructor that takes an engine and a url for the database
+	 * 
+	 * @param engine name of the engine
+	 * @param dburl url of the database for the engine
+	 */
+	public BlueprintsBase(String engine, String dburl) {
+		this(engine, dburl, null);
 	}
 	
 	/**
@@ -145,7 +177,7 @@ public class BlueprintsBase implements Shutdownable {
 			if (e.getInVertex().equals(inVertex)) return e;
 		}
 		Edge re = graph.addEdge(id,  outVertex, inVertex, edgeLabel);
-		re.setProperty("sys:created_at", dateFormatter.format(new Date()));
+		re.setProperty("sys_created_at", dateFormatter.format(new Date()));
 		return re;
 	}
 	public Edge createEdgeIfNotExist(Vertex outVertex, Vertex inVertex, String edgeLabel) {
@@ -184,7 +216,7 @@ public class BlueprintsBase implements Shutdownable {
 	protected Vertex createNakedVertex(String vertexType) {
 		Vertex node = graph.addVertex(null);
 		node.setProperty("type", vertexType.toString());
-		node.setProperty("sys:created_at", dateFormatter.format(new Date()));
+		node.setProperty("sys_created_at", dateFormatter.format(new Date()));
 		typeidx.put("type", vertexType.toString(), node);
 		return node;
 	}
@@ -262,21 +294,64 @@ public class BlueprintsBase implements Shutdownable {
 	
 	/**
 	 * Passthrough function for setting the transaction buffer size
-	 * 
-	 * This function does a naked cast to a TransactionalGraph, so I'd imagine that
-	 * this could cause some problems later down the line. For right now on
-	 * neo4j and rexster we should be fine.
+	 *
+	 * If the graph is not transactional a warning message will be raised
 	 * 
 	 * @param bufferSize the number of modifications allowed between commits
 	 */
 	public void setMaxBufferSize(int bufferSize) {
-		if (bufferSize == 0) {
-			log.warn("Transaction Buffer size set to 0, transactions will be MANUAL");
+		if (tgraph != null) {
+			if (bufferSize == 0) {
+				log.debug("Transaction Buffer size set to 0, transactions will be MANUAL");
+			} else {
+				log.debug("Transaction buffer size set to {}", bufferSize);
+			}
+			tgraph.setMaxBufferSize(bufferSize);
 		} else {
-			log.debug("Transaction buffer size set to {}", bufferSize);
+			log.warn("Attempt to set buffer size on non-transactional graph");
 		}
-		((TransactionalGraph)graph).setMaxBufferSize(bufferSize);
 	}
+	
+	/**
+	 * Safety wrapper function for starting a transaction
+	 * 
+	 * a logging warning is raised if the graph is not transactional
+	 */
+	public void startTransaction() {
+		if (tgraph != null) {
+			tgraph.startTransaction();
+		} else {
+			log.warn("Attempt start transaction on non-transactional graph");
+		}
+	}
+
+	/**
+	 * Safety wrapper function for concluding a transaction
+	 * 
+	 * a logging warning is raised if the graph is not transactional
+	 */
+	public void stopTransaction() {
+		if (tgraph != null) {
+			tgraph.stopTransaction(TransactionalGraph.Conclusion.SUCCESS);
+		} else {
+			log.warn("Attempt to stop transaction on non-transactional graph");
+		}
+	}
+	
+	/**
+	 * Safety wrapper function for rolling back a transaction
+	 * 
+	 * a logging warning is raised if the graph is not transactional
+	 */
+	public void rollbackTransaction() {
+		if (tgraph != null) {
+			tgraph.stopTransaction(TransactionalGraph.Conclusion.FAILURE);
+		} else {
+			log.warn("Attempt to rollback transaction on non-transactional graph");
+		}
+	}
+	
+	
 	
 	/**
 	 * Adds the object to the index only if it isn't already there
@@ -342,5 +417,4 @@ public class BlueprintsBase implements Shutdownable {
 		graph.shutdown();
 		log.trace("Graph shutdown complete");
 	}
-
 }
