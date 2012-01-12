@@ -79,8 +79,14 @@ public class BlueprintsBase implements Shutdownable {
 			log.info("Opening rexster graph at: {}", dburl);
 			graph = new RexsterGraph(dburl);
 		} else if (eng.equals("tinkergraph")) {
-			log.warn("Configuration parameters passed to TinkerGraph - Ignored");
-			graph = new TinkerGraph();
+			if (config != null) {
+				log.warn("Configuration parameters passed to TinkerGraph - Ignored");
+			}
+			if (dburl == null) {
+				graph = new TinkerGraph();
+			} else {
+				graph = new TinkerGraph(dburl);
+			}
 		} else if (eng.equals("neo4jbatch")) {
 			log.info("Opening neo4j batch graph at: {}", dburl);
 			graph = new Neo4jBatchGraph(dburl, config);
@@ -189,6 +195,11 @@ public class BlueprintsBase implements Shutdownable {
 	public Edge createEdgeIfNotExist(Vertex outVertex, Vertex inVertex, StringableEnum labelType) {
 		return createEdgeIfNotExist(null, outVertex, inVertex, labelType.toString());
 	}
+	public Edge createEdge(Vertex outVertex, Vertex inVertex, StringableEnum labelType) {
+		Edge re = graph.addEdge(null, outVertex, inVertex, labelType.toString());
+		re.setProperty("sys_created_at", dateFormatter.format(new Date()));
+		return re;
+	}
 	
 	/**
 	 * Wrapper function for removing edges.
@@ -219,6 +230,16 @@ public class BlueprintsBase implements Shutdownable {
 		node.setProperty("sys_created_at", dateFormatter.format(new Date()));
 		typeidx.put("type", vertexType.toString(), node);
 		return node;
+	}
+	
+	/**
+	 * Helper function for createNakedVertex that allows enums
+	 * 
+	 * @param vertexType
+	 * @return
+	 */
+	protected Vertex createNakedVertex(StringableEnum vertexType) {
+		return createNakedVertex(vertexType.toString());
 	}
 	
 	protected Vertex getOrCreateVertexHelper(String idcol, Object idval, String vertexType, Index <Vertex> index) {
