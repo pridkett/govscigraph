@@ -1,7 +1,9 @@
 GovSci Graph
 ============
 This is a library of helper functions for manipulation of graphs using
-BluePrints from TinkerPop.
+BluePrints from TinkerPop. This abstracts away the constructors and whether
+or not a database is transactional. It also automatically adds new elements
+to various indices and takes care of formatting properties properly.
 
 Compiling The Code
 ==================
@@ -23,3 +25,9 @@ If that does not resolve your problems you can right click on the project
 and select "Maven"->"Update Maven Configuration..." followed by
 "Maven"->"Update Dependencies...". This should take care of everything for
 you.
+
+Using the Package
+=================
+In most cases you'll want to create a database management class that extends
+BlueprintsBase. And start initialize the graph with something like:
+    super("neo4j","/tmp/graph.db", null)

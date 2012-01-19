@@ -3,7 +3,7 @@
  *
  * A variety of abstractions useful for graph databases.
  * 
- * Copyright (c) 2011 IBM Corporation
+ * Copyright (c) 2011-2012 IBM Corporation
  *
  * This library was originally developed for a joint research
  * project with the University of Nebraska, Lincoln under terms
@@ -49,6 +49,10 @@ import com.tinkerpop.blueprints.pgm.impls.orientdb.OrientGraph;
 import com.tinkerpop.blueprints.pgm.impls.rexster.RexsterGraph;
 import com.tinkerpop.blueprints.pgm.impls.tg.TinkerGraph;
 
+/**
+ * @author patrick
+ *
+ */
 public class BlueprintsBase implements Shutdownable {
 	private Logger log = null;
 	protected IndexableGraph graph = null;
@@ -62,6 +66,11 @@ public class BlueprintsBase implements Shutdownable {
 	
 	/**
 	 * Full constructor that takes an engine, a url, and a map for a configuration
+	 * 
+	 * Configuration parameters should be the exact names that the database uses. This
+	 * is mainly for setting very specific parameters for neo4j, but it also works for
+	 * defining a username and password for connecting to an OreintDB database.
+	 * 
 	 * @param engine name of the engine
 	 * @param dburl url of the database for the engine
 	 * @param config parameters for the engine
@@ -178,26 +187,89 @@ public class BlueprintsBase implements Shutdownable {
 		return (Index<Edge>)getOrCreateIndex(idxname, Edge.class);
 	}
 	
+	/**
+	 * Helper function to set the creation date property of nodes
+	 * 
+	 * At one point in time this was sys:created_at, however OrientDB has some
+	 * problems with ":" characters in property names, so it is now sys_created_at
+	 * 
+	 * @param elem Element to set creation date of
+	 */
+	protected void setElementCreateTime(Element elem) {
+		setProperty(elem, "sys_created_at", new Date());
+	}
+	
+	/**
+	 * Creates an edge only if it doesn't already exist
+	 * 
+	 * @param id identifier for the edge, not used by some underlying databases
+	 * @param outVertex source vertex
+	 * @param inVertex target vertex
+	 * @param edgeLabel label for the edge
+	 * @return newly created edge
+	 */
 	public Edge createEdgeIfNotExist(Object id, Vertex outVertex, Vertex inVertex, String edgeLabel) {
 		for (Edge e : outVertex.getOutEdges(edgeLabel)) {
 			if (e.getInVertex().equals(inVertex)) return e;
 		}
 		Edge re = graph.addEdge(id,  outVertex, inVertex, edgeLabel);
-		re.setProperty("sys_created_at", dateFormatter.format(new Date()));
+		setElementCreateTime(re);
 		return re;
 	}
+	
+	
+	/**
+	 * Helper function for {@link #createEdgeIfNotExist(Object, Vertex, Vertex, String)} that ignores the first argument
+	 * 
+	 * @param outVertex source vertex
+	 * @param inVertex target vertex
+	 * @param edgeLabel label for the edge
+	 * @return newly created edge
+	 */
 	public Edge createEdgeIfNotExist(Vertex outVertex, Vertex inVertex, String edgeLabel) {
 		return createEdgeIfNotExist(null, outVertex, inVertex, edgeLabel);
 	}
+	
+	
+	/**
+	 * Helper function for {@link #createEdgeIfNotExist(Object, Vertex, Vertex, String) that accepts an enum for edge type
+	 * 
+	 * @param id identifier for the edge, not used by some underlying databases
+	 * @param outVertex source vertex
+	 * @param inVertex target vertex
+	 * @param labelType enum for label on edge
+	 * @return newly created edge
+	 */
 	public Edge createEdgeIfNotExist(Object id, Vertex outVertex, Vertex inVertex, StringableEnum labelType) {
 		return createEdgeIfNotExist(id, outVertex, inVertex, labelType.toString());		
 	}
+	
+	/**
+	 * Helper function for {@link #createEdgeIfNotExist(Object, Vertex, Vertex, StringableEnum) that requires no id and accepts an enum for an edge type
+	 * @param outVertex source vertex
+	 * @param inVertex target vertex
+	 * @param labelType enum for label on edge
+	 * @return newly created edge
+	 */
 	public Edge createEdgeIfNotExist(Vertex outVertex, Vertex inVertex, StringableEnum labelType) {
 		return createEdgeIfNotExist(null, outVertex, inVertex, labelType.toString());
 	}
+	
+	/**
+	 * Helper function that creates an edge without first checking to see if the edge exists
+	 * 
+	 * This is most useful when you know that the edge isn't already there as some underlying
+	 * graphs through fits when you create multiple edges between the same nodes with the
+	 * same label.
+	 * 
+	 * @param outVertex source vertex
+	 * @param inVertex target vertex
+	 * @param labelType enum for label on edge
+	 * @return newly created edge
+	 */
 	public Edge createEdge(Vertex outVertex, Vertex inVertex, StringableEnum labelType) {
 		Edge re = graph.addEdge(null, outVertex, inVertex, labelType.toString());
-		re.setProperty("sys_created_at", dateFormatter.format(new Date()));
+		setElementCreateTime(re);
 		return re;
 	}
 	
@@ -221,27 +293,38 @@ public class BlueprintsBase implements Shutdownable {
 	 * 
 	 * Entries are also placed into the type index, but that's it.
 	 * 
-	 * @param vertexType
+	 * This function does not handle specific ids for nodes
+	 * 
+	 * @param vertexType type of vertex to create
 	 * @return
 	 */
 	protected Vertex createNakedVertex(String vertexType) {
 		Vertex node = graph.addVertex(null);
 		node.setProperty("type", vertexType.toString());
-		node.setProperty("sys_created_at", dateFormatter.format(new Date()));
 		typeidx.put("type", vertexType.toString(), node);
+		setElementCreateTime(node);
 		return node;
 	}
 	
 	/**
 	 * Helper function for createNakedVertex that allows enums
 	 * 
-	 * @param vertexType
+	 * @param vertexType an enum of the type of vertex to create
 	 * @return
 	 */
 	protected Vertex createNakedVertex(StringableEnum vertexType) {
 		return createNakedVertex(vertexType.toString());
 	}
 	
+	/**
+	 * Checks an index for an element, if found, returns it. If not, create the element and add it to the index.
+	 * 
+	 * @param idcol the name of the column which contains the id
+	 * @param idval the value of the id to look up in the index
+	 * @param vertexType the type of vertex to create
+	 * @param index the index containing the elements
+	 * @return the existing vertex or a new vertex
+	 */
 	protected Vertex getOrCreateVertexHelper(String idcol, Object idval, String vertexType, Index <Vertex> index) {
 		Vertex node = null;
 		Iterable<Vertex> results = index.get(idcol, idval);
@@ -257,6 +340,15 @@ public class BlueprintsBase implements Shutdownable {
 		return node;
 	}
 	
+	/**
+	 * Helper function for {@link #getOrCreateVertexHelper(String, Object, String, Index) that accepts an enum
+	 * 
+	 * @param idcol the name of the column which contains the id
+	 * @param idval the value of the id to look up in the index
+	 * @param vertexType enum of the type of vertex to create
+	 * @param index the index containing the elements
+	 * @return the existing vertex or a new vertex
+	 */
 	protected Vertex getOrCreateVertexHelper(String idcol, Object idval, StringableEnum vertexType, Index <Vertex> index) {
 		return getOrCreateVertexHelper(idcol, idval, vertexType.toString(), index);
 	}
@@ -372,8 +464,6 @@ public class BlueprintsBase implements Shutdownable {
 		}
 	}
 	
-	
-	
 	/**
 	 * Adds the object to the index only if it isn't already there
 	 * 
@@ -391,10 +481,37 @@ public class BlueprintsBase implements Shutdownable {
 		return true;
 	}
 	
+	/**
+	 * Sets a string property on an element, ensures it is not null first
+	 * 
+	 * NOTE: this automatically trims 
+	 * @param elem Element to set the property
+	 * @param propname name of the property
+	 * @param property the value of the property
+	 */
 	public void setProperty(Element elem, String propname, String property) {
-		if (property != null && !property.trim().equals("")) elem.setProperty(propname, property);
+		if (property != null && !property.trim().equals("")) elem.setProperty(propname, property.trim());
 		log.trace("{} = {}", propname, property);
 	}
+	
+	/**
+	 * Helper for {@link #setProperty(Element, String, String)}
+	 * 
+	 * @param elem
+	 * @param prop
+	 * @param property
+	 */
+	public void SetProperty(Element elem, StringableEnum prop, String property) {
+		setProperty(elem, prop.toString(), property);
+	}
+	
+	/**
+	 * Formats and sets a date property of an element
+	 * 
+	 * @param elem Element to set the property
+	 * @param propname name of the property
+	 * @param propdate date object to set
+	 */
 	public void setProperty(Element elem, String propname, Date propdate) {
 		if (propdate != null) {
 			elem.setProperty(propname, dateFormatter.format(propdate));
@@ -403,29 +520,152 @@ public class BlueprintsBase implements Shutdownable {
 			log.trace("{} = null (not setting property)", propname);
 		}
 	}
+	
+	/**
+	 * Helper for {@link #setProperty(Element, String, Date)}
+	 * 
+	 * @param elem
+	 * @param prop
+	 * @param propdate
+	 */
+	public void setProperty(Element elem, StringableEnum prop, Date propdate) {
+		setProperty(elem, prop.toString(), propdate);
+	}
+	
+	/**
+	 * Sets an integer property of an element
+	 * 
+	 * @param elem Element to set the property
+	 * @param propname name of the property
+	 * @param propvalue int value to set
+	 */
 	public void setProperty(Element elem, String propname, int propvalue) {
 		elem.setProperty(propname, propvalue);
 		log.trace("{} = {}", propname, propvalue);
 	}
+	
+	/**
+	 * Helper for {@link #setProperty(Element, String, int)}
+	 * 
+	 * @param elem
+	 * @param prop
+	 * @param propvalue
+	 */
+	public void setProperty(Element elem, StringableEnum prop, int propvalue) {
+		setProperty(elem, prop.toString(), propvalue);
+	}
+	
+	/**
+	 * Sets a long property of an element
+	 * 
+	 * @param elem Element to set the property
+	 * @param propname name of the property
+	 * @param propvalue long value to set
+	 */
 	public void setProperty(Element elem, String propname, long propvalue) {
 		elem.setProperty(propname, propvalue);
 		log.trace("{} = {}", propname, propvalue);
 	}	
+	
+	/**
+	 * Helper for {@link #setProperty(Element, String, long)}
+	 * 
+	 * @param elem
+	 * @param prop
+	 * @param propvalue
+	 */
+	public void setProperty(Element elem, StringableEnum prop, long propvalue) {
+		setProperty(elem, prop.toString(), propvalue);
+	}
+	
+	/**
+	 * Sets a double property of an element
+	 * 
+	 * @param elem Element to set the property
+	 * @param propname name of the property
+	 * @param propvalue double value to set
+	 */
 	public void setProperty(Element elem, String propname, double propvalue) {
 		elem.setProperty(propname, propvalue);
 		log.trace("{} = {}", propname, propvalue);
 	}
+	
+	/**
+	 * Helper for {@link #setProperty(Element, String, double)}
+	 * @param elem
+	 * @param prop
+	 * @param propvalue
+	 */
+	public void setProperty(Element elem, StringableEnum prop, double propvalue) {
+		setProperty(elem, prop.toString(), propvalue);
+	}
+	
+	/**
+	 * Sets a boolean property of an element
+	 * 
+	 * @param elem Element to set the property
+	 * @param propname name of the property
+	 * @param propvalue boolean value to set
+	 */
 	public void setProperty(Element elem, String propname, boolean propvalue) {
 		elem.setProperty(propname, propvalue);
 		log.trace("{} = {}", propname, propvalue);
 	}
+	
+	/**
+	 * Helper for {@link #setProperty(Element, String, boolean)}
+	 * @param elem
+	 * @param prop
+	 * @param propvalue
+	 */
+	public void setProperty(Element elem, StringableEnum prop, boolean propvalue) {
+		setProperty(elem, prop.toString(), propvalue);
+	}
+	
+	/**
+	 * Sets a generic property of an element
+	 * 
+	 * This should only get called if all of the other prototypes have been exhausted.
+	 * In which case there's a good chance that this method will raise an exception
+	 * as you can only use Java primatives.
+	 * 
+	 * @param elem Element to set the property
+	 * @param propname name of the property
+	 * @param propvalue object to set as value
+	 */
 	public void setProperty(Element elem, String propname, Object propvalue) {
 		if (propvalue != null) {
 			elem.setProperty(propname, propvalue);
 			log.trace("{} = {}", propname, propvalue);
 		}
 	}
+	
+	/**
+	 * Sets a generic property of an element
+	 * 
+	 * This method then defers to the string based versions of setProperty. It's a
+	 * convenience method.
+	 * 
+	 * @param elem Element to set the property
+	 * @param prop Enum of property
+	 * @param propvalue object to set as value
+	 */
+	public void setProperty(Element elem, StringableEnum prop, Object propvalue) {
+		setProperty(elem, prop.toString(), propvalue);
+	}
 
+	/**
+	 * Sets a property of an element if an only if that property is currently null
+	 * 
+	 * For example, if an element already has a property "BAR" and you try to set
+	 * a new value of "BAR" this will return false and not change the value. Usable
+	 * if you want to mimic immutable properties.
+	 * 
+	 * @param elem Element to set the property
+	 * @param key name of the property to set
+	 * @param value value of set
+	 * @return boolean on whether or not it was successful
+	 */
 	protected <T extends Element> boolean setPropertyIfNull(T elem, String key, Object value) {
 		if (elem.getProperty(key) != null) return false;
 		elem.setProperty(key, value);
@@ -433,6 +673,9 @@ public class BlueprintsBase implements Shutdownable {
 		return true;
 	}
 	
+	/* (non-Javadoc)
+	 * @see com.ibm.research.govsci.graph.Shutdownable#shutdown()
+	 */
 	public void shutdown() {
 		log.info("Shutting down graph database engine");
 		graph.shutdown();
