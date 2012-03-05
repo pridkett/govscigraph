@@ -390,6 +390,68 @@ public class BlueprintsBase implements Shutdownable {
 	}
 	
 	/**
+	 * Converts an int (aka unix timestamp) to a java.util.Date object
+	 * 
+	 * This function is trivial, but useful when used in conjunction with
+	 * {@link #propertyToDate(Object)}
+	 * 
+	 * @param i the time in seconds since the beginning of the epoch
+	 * @return a java.util.Date object
+	 */
+	public Date propertyToDate(int i) {
+	    return new Date(i*1000L);
+	}
+	
+	/**
+	 * Converts a long to a java.util.Date object
+	 * 
+	 * This function is trivial, but useful when used in conjunction with
+	 * {@link #propertyToDate(Object)}
+	 * 
+	 * @param l the time in milliseconds since the beginning of the epoch
+	 * @return a java.util.Date object
+	 */
+	public Date propertyToDate(long l) {
+	    return new Date(l);
+	}
+	
+	/**
+	 * Converts a formatted date stringto a date object
+	 * 
+	 * @deprecated handles older cases
+	 * @param s a string such as 2012-02-10T19:22:10+0000
+	 * @return a java.util.Date object
+	 */
+	public Date propertyToDate(String s) {
+	    try {
+	        return dateFormatter.parse(s);
+	    } catch (ParseException e) {
+	        log.error("Parse exception parsing \"{}\" into Date object", s, e);
+	        return null;
+	    }
+	}
+	
+	/**
+	 * Generic helper function for converting a property to a date.
+	 * 
+	 * This should do the proper detection of the format of the object
+	 * and make it into a java.util.Date object as required
+	 * 
+	 * @param o
+	 * @return a java.util.Date object
+	 */
+	public Date propertyToDate(Object o) {
+	    if (o instanceof Integer)
+	        return propertyToDate(((Integer) o).intValue());
+	    else if (o instanceof Long)
+	        return propertyToDate(((Long) o).longValue());
+	    else if (o instanceof String)
+	        return propertyToDate((String) o);
+	    log.error("Unable to process object of class: {}", o.getClass());
+	    return null;
+	}
+	
+	/**
 	 * Simple helper function that subtracts d2 from d1
 	 * 
 	 * @deprecated
@@ -508,14 +570,17 @@ public class BlueprintsBase implements Shutdownable {
 	/**
 	 * Formats and sets a date property of an element
 	 * 
+	 * NOTE: dates are stored as UNIX timestamps. Thus we can lose
+	 * some precision here, but the extra space required for a LONG
+	 * really isn't useful here.
+	 * 
 	 * @param elem Element to set the property
 	 * @param propname name of the property
 	 * @param propdate date object to set
 	 */
 	public void setProperty(Element elem, String propname, Date propdate) {
 		if (propdate != null) {
-			elem.setProperty(propname, dateFormatter.format(propdate));
-			log.trace("{} = {}", propname, dateFormatter.format(propdate));
+			elem.setProperty(propname, propdate.getTime()/1000L);
 		} else {
 			log.trace("{} = null (not setting property)", propname);
 		}
@@ -655,7 +720,7 @@ public class BlueprintsBase implements Shutdownable {
 	}
 
 	/**
-	 * Sets a property of an element if an only if that property is currently null
+	 * Sets a property of an element if and only if that property is currently null
 	 * 
 	 * For example, if an element already has a property "BAR" and you try to set
 	 * a new value of "BAR" this will return false and not change the value. Usable
