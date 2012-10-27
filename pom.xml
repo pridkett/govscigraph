@@ -41,6 +41,7 @@
     <blueprints.version>1.2</blueprints.version>
     <junit.version>3.8.1</junit.version>
     <logback.version>0.9.29</logback.version>
+    <findbugs.version>2.4.0</findbugs.version>
   </properties>
 
   <dependencies>
@@ -133,7 +134,7 @@
       <plugin>
         <groupId>org.codehaus.mojo</groupId>
         <artifactId>findbugs-maven-plugin</artifactId>
-        <version>2.4.0</version>
+        <version>${findbugs.version}</version>
         <configuration>
           <findbugsXmlOutput>true</findbugsXmlOutput>
           <findbugsXmlWithMessages>true</findbugsXmlWithMessages>
