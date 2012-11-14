@@ -20,6 +20,7 @@ import org.slf4j.LoggerFactory;
 import org.slf4j.Logger;
 
 import com.tinkerpop.blueprints.Edge;
+import com.tinkerpop.blueprints.Index;
 import com.tinkerpop.blueprints.Vertex;
 
 import scala.actors.threadpool.Arrays;
@@ -41,13 +42,23 @@ public class BlueprintsBaseTest {
     
     @Parameters
     public static Collection<Object[]> data() {
-        Object[][] data = new Object[][] { {"tinkergraph", null, null},
-                {"tinkergraph", "::nofolder::", null},
-                {"neo4j", "::folder::", null},
-                {"titan", "::folder::", null},
-                {"orientdb", "memory:unittest", null}
+        Object[][] data = new Object[][] { {Engine.TINKERGRAPH, null, null},
+                {Engine.TINKERGRAPH, "::nofolder::", null},
+                {Engine.NEO4J, "::folder::", null},
+                {Engine.TITAN, "::folder::", null},
+                {Engine.ORIENTDB, "memory:unittest", null}
         };
         return Arrays.asList(data);
+    }
+    
+    private String rewriteUrl(String dburl) throws IOException{
+        String databaseUrl = dburl;
+        if (dburl != null && dburl.equals("::folder::")) {
+            databaseUrl = folder.newFolder().getAbsolutePath();
+        } else if (dburl != null && dburl.equals("::nofolder::")) {
+            databaseUrl = new File(folder.newFolder().getAbsolutePath(), "tmp").getAbsolutePath();
+        }
+        return databaseUrl;
     }
     
     @Rule
@@ -55,16 +66,10 @@ public class BlueprintsBaseTest {
     
     @Before
     public void createBlueprintsBase() {
+        log.trace("Creating database: {} {}", dbengine, dburl);
         try {
-            String databaseUrl = dburl;
-            log.trace("Creating database: {} {}", dbengine, dburl);
-            if (dburl != null && dburl.equals("::folder::")) {
-                databaseUrl = folder.newFolder().getAbsolutePath();
-            } else if (dburl != null && dburl.equals("::nofolder::")) {
-                databaseUrl = new File(folder.newFolder().getAbsolutePath(), "tmp").getAbsolutePath();
-            }
             log.trace("attempting to create...");
-            b = new BlueprintsBase(dbengine, databaseUrl);
+            b = new BlueprintsBase(dbengine, rewriteUrl(dburl));
             log.trace("Success!");
         } catch (IOException e) {
             log.error("IOException creating database:", e);
@@ -78,21 +83,22 @@ public class BlueprintsBaseTest {
 
     @Test
     public void testBlueprintsBaseStringStringMapOfStringString() {
-        fail("Not yet implemented");
+        log.trace("Creating database: {} {}", dbengine, dburl);
+        try {
+            log.trace("attempting to create...");
+            b = new BlueprintsBase(dbengine, rewriteUrl(dburl), config);
+            log.trace("Success!");
+        } catch (IOException e) {
+            log.error("IOException creating database:", e);
+        }
     }
 
     @Test
     public void testBlueprintsBaseStringString() {
+        log.trace("Creating database: {} {}", dbengine, dburl);
         try {
-            String databaseUrl = dburl;
-            log.trace("Creating database: {} {}", dbengine, dburl);
-            if (dburl != null && dburl.equals("::folder::")) {
-                databaseUrl = folder.newFolder().getAbsolutePath();
-            } else if (dburl != null && dburl.equals("::nofolder::")) {
-                databaseUrl = new File(folder.newFolder().getAbsolutePath(), "tmp").getAbsolutePath();
-            }
             log.trace("attempting to create...");
-            BlueprintsBase b = new BlueprintsBase(dbengine, databaseUrl);
+            BlueprintsBase b = new BlueprintsBase(dbengine, rewriteUrl(dburl));
             log.trace("Success!");
         } catch (IOException e) {
             log.error("IOException creating database:", e);
@@ -162,7 +168,11 @@ public class BlueprintsBaseTest {
 
     @Test
     public void testGetOrCreateVertexHelper() {
-        fail("Not yet implemented");
+        Index<Vertex> idx = b.getOrCreateIndex("test-idx");
+        Vertex v1 = b.getOrCreateVertexHelper("testIdCol", "testVal", "dummyType", idx);
+        b.setProperty(v1, "testStringProperty", "foo");
+        Vertex v2 = b.getOrCreateVertexHelper("testIdCol", "testVal", "dummyType", idx);
+        assertTrue(v1.getProperty("testStringProperty").equals(v2.getProperty("testStringProperty")));
     }
 
     @Test
@@ -172,24 +182,37 @@ public class BlueprintsBaseTest {
         d = b.propertyToDate("2012-02-10T19:22:10+0000");
     }
 
-    @Test
-    public void testDateDifference() {
-        fail("Not yet implemented");
-    }
 
     @Test
     public void testStopTransaction() {
-        fail("Not yet implemented");
+        Vertex v1 = b.createNakedVertex("dummyType");
+        b.stopTransaction();
+        Vertex v2 = b.createNakedVertex("dummyType");
     }
 
     @Test
     public void testRollbackTransaction() {
-        fail("Not yet implemented");
+        if (b.supportsTransactions()) {
+            Vertex v1 = b.createNakedVertex("dummyType");
+            b.setProperty(v1, "testStringProperty", "foo");
+            b.stopTransaction();
+            b.setProperty(v1, "testStringProperty", "bar");
+            b.rollbackTransaction();
+            assertTrue(v1.getProperty("testStringProperty").equals("foo"));
+        }
     }
 
     @Test
     public void testAddToIndexIfNotPresent() {
-        fail("Not yet implemented");
+        if (b.supportsIndexes()) {
+            Index<Vertex> idx = b.getOrCreateIndex("test-idx");
+            Vertex v1 = b.createNakedVertex("dummyType");
+            assertTrue(b.addToIndexIfNotPresent("testIdCol", "testVal", v1, idx));
+            assertFalse(b.addToIndexIfNotPresent("testIdCol", "testVal", v1, idx));
+        } else {
+            log.info("Database engine \"{}\" does not support manual indexes", 
+                    b.getDbengine());
+        }
     }
 
     @Test

@@ -63,6 +63,7 @@ public class BlueprintsBase implements Shutdownable {
     protected IndexableGraph igraph = null;
     protected KeyIndexableGraph kigraph = null;
     protected TransactionalGraph tgraph = null;
+    protected String dbengine = null;
     protected SimpleDateFormat dateFormatter = null;
     private static final String DATE_FORMAT = "yyyy-MM-dd'T'HH:mm:ssZ";
 
@@ -85,18 +86,19 @@ public class BlueprintsBase implements Shutdownable {
     public BlueprintsBase(String engine, String dburl, Map<String, String> config) {
         log = LoggerFactory.getLogger(BlueprintsBase.class);
         String eng = engine.toLowerCase().trim();
+        dbengine = eng;
         log.warn("Requested database: {} url: {}", eng, dburl);
-        if (eng.equals("neo4j")) {
+        if (eng.equals(Engine.NEO4J)) {
             log.info("Opening neo4j graph at: {}", dburl);
             kigraph = new Neo4jGraph(dburl, config);
             tgraph = (TransactionalGraph) kigraph;
             igraph = (IndexableGraph) kigraph;
-        } else if (eng.equals("rexster")) {
+        } else if (eng.equals(Engine.REXSTER)) {
             log.warn("Configuration parameters passed to RexsterGraph - Ignored");
             log.info("Opening rexster graph at: {}", dburl);
             kigraph = new RexsterGraph(dburl);
             igraph = (IndexableGraph) kigraph;
-        } else if (eng.equals("tinkergraph")) {
+        } else if (eng.equals(Engine.TINKERGRAPH)) {
             if (config != null) {
                 log.warn("Configuration parameters passed to TinkerGraph - Ignored");
             }
@@ -107,12 +109,12 @@ public class BlueprintsBase implements Shutdownable {
                 kigraph = new TinkerGraph(dburl);
             }
             igraph = (IndexableGraph) kigraph;
-        } else if (eng.equals("neo4jbatch")) {
+        } else if (eng.equals(Engine.NEO4JBATCH)) {
             log.info("Opening neo4j batch graph at: {}", dburl);
             kigraph = new Neo4jBatchGraph(dburl, config);
             tgraph = (TransactionalGraph) kigraph;
             igraph = (IndexableGraph) kigraph;
-        } else if (eng.equals("orientdb")) {
+        } else if (eng.equals(Engine.ORIENTDB)) {
             String username = null;
             String password = null;
             if (config != null) {
@@ -126,7 +128,7 @@ public class BlueprintsBase implements Shutdownable {
             }
             tgraph = (TransactionalGraph) kigraph;
             igraph = (IndexableGraph) kigraph;
-        } else if (eng.equals("titan")) {
+        } else if (eng.equals(Engine.TITAN)) {
             Configuration conf = null;
             TitanGraph g;
             if (config != null) {
@@ -615,5 +617,41 @@ public class BlueprintsBase implements Shutdownable {
         log.info("Shutting down graph database engine");
         kigraph.shutdown();
         log.trace("Graph shutdown complete");
+    }
+    
+    /**
+     * Boolean if this graph database supports transactions
+     * 
+     * @return whether or not this database supports transactions
+     */
+    public Boolean supportsTransactions() {
+        return tgraph != null;
+    }
+    
+    /**
+     * Boolean if this graph database supports key indexes
+     * 
+     * @return whether or not this database supports key indexes
+     */
+    public Boolean supportsKeyIndexes() {
+        return kigraph != null;
+    }
+    
+    /**
+     * Boolean whether or not this graph database supports indexes
+     * 
+     * @return whether or not this database supports indexes
+     */
+    public Boolean supportsIndexes() {
+        return igraph != null;
+    }
+    
+    /**
+     * Returns the name of the current database engine
+     * 
+     * @return a string with the name of the current database engine
+     */
+    public String getDbengine() {
+        return this.dbengine;
     }
 }
