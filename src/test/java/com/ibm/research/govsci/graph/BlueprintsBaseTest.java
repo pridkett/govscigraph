@@ -5,6 +5,7 @@ import static org.junit.Assert.*;
 import java.io.File;
 import java.io.IOException;
 import java.util.Collection;
+import java.util.Date;
 import java.util.Map;
 
 import org.junit.After;
@@ -17,6 +18,9 @@ import org.junit.runners.Parameterized;
 import org.junit.runners.Parameterized.Parameters;
 import org.slf4j.LoggerFactory;
 import org.slf4j.Logger;
+
+import com.tinkerpop.blueprints.Edge;
+import com.tinkerpop.blueprints.Vertex;
 
 import scala.actors.threadpool.Arrays;
 
@@ -41,7 +45,7 @@ public class BlueprintsBaseTest {
                 {"tinkergraph", "::nofolder::", null},
                 {"neo4j", "::folder::", null},
                 {"titan", "::folder::", null},
-                {"orientdb", "::folder::", null}
+                {"orientdb", "memory:unittest", null}
         };
         return Arrays.asList(data);
     }
@@ -97,52 +101,63 @@ public class BlueprintsBaseTest {
 
     @Test
     public void testDropKeyIndex() {
-        fail("Not yet implemented");
+        b.createKeyIndex("testIndex");
+        b.dropKeyIndex("testIndex");
     }
 
     @Test
     public void testDropIndex() {
-        fail("Not yet implemented");
+        b.getOrCreateIndex("test-idx");
+        b.dropIndex("test-idx");
     }
 
     @Test
     public void testGetOrCreateIndexStringClassOfT() {
-        fail("Not yet implemented");
+        b.getOrCreateIndex("test-vertex-idx", Vertex.class);
+        b.getOrCreateIndex("test-edge-idx", Edge.class);
     }
 
     @Test
     public void testGetOrCreateIndexString() {
-        fail("Not yet implemented");
+        b.getOrCreateIndex("test-vertex-idx");
     }
 
     @Test
     public void testGetOrCreateEdgeIndex() {
-        fail("Not yet implemented");
+        b.getOrCreateEdgeIndex("test-edge-idx");
     }
 
     @Test
     public void testSetElementCreateTime() {
-        fail("Not yet implemented");
+        Vertex v = b.createNakedVertex("dummyType");
+        b.setElementCreateTime(v);
     }
 
     @Test
     public void testCreateEdgeIfNotExistObjectVertexVertexString() {
-        fail("Not yet implemented");
+        Vertex v1 = b.createNakedVertex("dummyType");
+        Vertex v2 = b.createNakedVertex("dummyType");
+        Edge e1 = b.createEdgeIfNotExist(null, v1, v2, "dummyLabel");
     }
 
     @Test
     public void testCreateEdgeIfNotExistVertexVertexString() {
-        fail("Not yet implemented");
+        Vertex v1 = b.createNakedVertex("dummyType");
+        Vertex v2 = b.createNakedVertex("dummyType");
+        Edge e1 = b.createEdgeIfNotExist(v1, v2, "dummyLabel");
     }
 
     @Test
     public void testRemoveEdge() {
-        fail("Not yet implemented");
+        Vertex v1 = b.createNakedVertex("dummyType");
+        Vertex v2 = b.createNakedVertex("dummyType");
+        Edge e1 = b.createEdgeIfNotExist(v1, v2, "dummyLabel");
+        b.removeEdge(e1);
     }
 
     @Test
     public void testCreateNakedVertex() {
-        fail("Not yet implemented");
+        b.createNakedVertex("dummyType");
     }
 
     @Test
@@ -151,23 +166,10 @@ public class BlueprintsBaseTest {
     }
 
     @Test
-    public void testPropertyToDateInt() {
-        fail("Not yet implemented");
-    }
-
-    @Test
-    public void testPropertyToDateLong() {
-        fail("Not yet implemented");
-    }
-
-    @Test
-    public void testPropertyToDateString() {
-        fail("Not yet implemented");
-    }
-
-    @Test
     public void testPropertyToDateObject() {
-        fail("Not yet implemented");
+        Date d = b.propertyToDate(1000000000);
+        d = b.propertyToDate(1000000000000L);
+        d = b.propertyToDate("2012-02-10T19:22:10+0000");
     }
 
     @Test
@@ -192,47 +194,64 @@ public class BlueprintsBaseTest {
 
     @Test
     public void testSetPropertyElementStringString() {
-        fail("Not yet implemented");
+        Vertex v1 = b.createNakedVertex("dummyType");
+        b.setProperty(v1, "testProperty", "testValue");
+        assertTrue(v1.getProperty("testProperty").equals("testValue"));
     }
 
     @Test
     public void testSetPropertyElementStringDate() {
-        fail("Not yet implemented");
+        Date d = new Date();
+        Vertex v1 = b.createNakedVertex("dummyType");
+        b.setProperty(v1, "testDateProperty", d);
     }
 
     @Test
     public void testSetPropertyElementStringInt() {
-        fail("Not yet implemented");
+        Vertex v1 = b.createNakedVertex("dummyType");
+        b.setProperty(v1, "testIntProperty", 3);
+        assertEquals(v1.getProperty("testIntProperty"), 3);
     }
 
     @Test
     public void testSetPropertyElementStringLong() {
-        fail("Not yet implemented");
+        Vertex v1 = b.createNakedVertex("dummyType");
+        b.setProperty(v1, "testLongProperty", 1L);
+        assertEquals(v1.getProperty("testLongProperty"), 1L);
     }
 
     @Test
     public void testSetPropertyElementStringDouble() {
-        fail("Not yet implemented");
+        Vertex v1 = b.createNakedVertex("dummyType");
+        b.setProperty(v1, "testDoubleProperty", 1.5);
+        assertTrue(Math.abs(((Double)v1.getProperty("testDoubleProperty")) - 1.5) < 0.0001);
     }
 
     @Test
     public void testSetPropertyElementStringBoolean() {
-        fail("Not yet implemented");
+        Vertex v1 = b.createNakedVertex("dummyType");
+        b.setProperty(v1, "testBooleanProperty", true);
+        assertEquals(v1.getProperty("testBooleanProperty"), true);
     }
 
     @Test
     public void testSetPropertyElementStringObject() {
-        fail("Not yet implemented");
+        Object o = new String("foo");
+        Vertex v1 = b.createNakedVertex("dummyType");
+        b.setProperty(v1, "testObjectProperty", o);
     }
 
     @Test
     public void testSetPropertyIfNull() {
-        fail("Not yet implemented");
+        Vertex v1 = b.createNakedVertex("dummyType");
+        b.setPropertyIfNull(v1, "testStringProperty", "test1");
+        b.setPropertyIfNull(v1, "testStringProperty", "test2");
+        assertTrue(v1.getProperty("testStringProperty").equals("test1"));
     }
 
     @Test
     public void testShutdown() {
-        fail("Not yet implemented");
+        b.shutdown();
     }
 
 }

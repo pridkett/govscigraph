@@ -113,8 +113,12 @@ public class BlueprintsBase implements Shutdownable {
             tgraph = (TransactionalGraph) kigraph;
             igraph = (IndexableGraph) kigraph;
         } else if (eng.equals("orientdb")) {
-            String username = config.get("username");
-            String password = config.get("password");
+            String username = null;
+            String password = null;
+            if (config != null) {
+                username = config.get("username");
+                password = config.get("password");
+            }
             if (username != null && password != null) {
                 kigraph = new OrientGraph(dburl, username, password);
             } else {
@@ -375,7 +379,7 @@ public class BlueprintsBase implements Shutdownable {
      * @param i the time in seconds since the beginning of the epoch
      * @return a java.util.Date object
      */
-    public Date propertyToDate(int i) {
+    private Date propertyToDate(int i) {
         return new Date(i*1000L);
     }
 
@@ -388,7 +392,7 @@ public class BlueprintsBase implements Shutdownable {
      * @param l the time in milliseconds since the beginning of the epoch
      * @return a java.util.Date object
      */
-    public Date propertyToDate(long l) {
+    private Date propertyToDate(long l) {
         return new Date(l);
     }
 
@@ -399,7 +403,7 @@ public class BlueprintsBase implements Shutdownable {
      * @param s a string such as 2012-02-10T19:22:10+0000
      * @return a java.util.Date object
      */
-    public Date propertyToDate(String s) {
+    private Date propertyToDate(String s) {
         try {
             return dateFormatter.parse(s);
         } catch (ParseException e) {
