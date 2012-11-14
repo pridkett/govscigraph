@@ -4,7 +4,7 @@
 
   <groupId>com.ibm.research.govsci.graph</groupId>
   <artifactId>govscigraph</artifactId>
-  <version>0.2-SNAPSHOT</version>
+  <version>2.1.0-SNAPSHOT</version>
   <packaging>jar</packaging>
 
   <name>govscigraph</name>
@@ -38,10 +38,11 @@
   <properties>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <slf4j.version>1.6.1</slf4j.version>
-    <blueprints.version>1.2</blueprints.version>
-    <junit.version>3.8.1</junit.version>
+    <blueprints.version>2.1.0</blueprints.version>
+    <junit.version>4.10</junit.version>
     <logback.version>0.9.29</logback.version>
     <findbugs.version>2.4.0</findbugs.version>
+    <titan.version>0.1.0</titan.version>
   </properties>
 
   <dependencies>
@@ -75,7 +76,7 @@
       <groupId>com.tinkerpop.blueprints</groupId>
       <artifactId>blueprints-orient-graph</artifactId>
       <version>${blueprints.version}</version>
-    </dependency>        
+    </dependency>
     <dependency>
       <groupId>ch.qos.logback</groupId>
       <artifactId>logback-classic</artifactId>
@@ -85,6 +86,18 @@
       <groupId>net.wagstrom.logging.logbackAddOns</groupId>
       <artifactId>logbackAddOns</artifactId>
       <version>0.1-SNAPSHOT</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>com.thinkaurelius.titan</groupId>
+      <artifactId>titan</artifactId>
+      <version>${titan.version}</version>
+      <exclusions>
+        <exclusion>
+          <artifactId>slf4j-log4j12</artifactId>
+          <groupId>org.slf4j</groupId>
+        </exclusion>
+      </exclusions>
     </dependency>
   </dependencies>
 

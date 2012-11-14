@@ -29,25 +29,30 @@ package com.ibm.research.govsci.graph;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.Date;
-import java.util.HashSet;
 import java.util.Map;
-import java.util.Set;
+import java.util.Map.Entry;
 import java.util.TimeZone;
 
+import org.apache.commons.configuration.BaseConfiguration;
+import org.apache.commons.configuration.Configuration;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.tinkerpop.blueprints.pgm.Edge;
-import com.tinkerpop.blueprints.pgm.Element;
-import com.tinkerpop.blueprints.pgm.Index;
-import com.tinkerpop.blueprints.pgm.IndexableGraph;
-import com.tinkerpop.blueprints.pgm.TransactionalGraph;
-import com.tinkerpop.blueprints.pgm.Vertex;
-import com.tinkerpop.blueprints.pgm.impls.neo4j.Neo4jGraph;
-import com.tinkerpop.blueprints.pgm.impls.neo4jbatch.Neo4jBatchGraph;
-import com.tinkerpop.blueprints.pgm.impls.orientdb.OrientGraph;
-import com.tinkerpop.blueprints.pgm.impls.rexster.RexsterGraph;
-import com.tinkerpop.blueprints.pgm.impls.tg.TinkerGraph;
+import com.thinkaurelius.titan.core.TitanFactory;
+import com.thinkaurelius.titan.core.TitanGraph;
+import com.tinkerpop.blueprints.Direction;
+import com.tinkerpop.blueprints.Edge;
+import com.tinkerpop.blueprints.Element;
+import com.tinkerpop.blueprints.Index;
+import com.tinkerpop.blueprints.IndexableGraph;
+import com.tinkerpop.blueprints.KeyIndexableGraph;
+import com.tinkerpop.blueprints.TransactionalGraph;
+import com.tinkerpop.blueprints.Vertex;
+import com.tinkerpop.blueprints.impls.neo4j.Neo4jGraph;
+import com.tinkerpop.blueprints.impls.neo4jbatch.Neo4jBatchGraph;
+import com.tinkerpop.blueprints.impls.orient.OrientGraph;
+import com.tinkerpop.blueprints.impls.rexster.RexsterGraph;
+import com.tinkerpop.blueprints.impls.tg.TinkerGraph;
 
 /**
  * @author patrick
@@ -55,12 +60,14 @@ import com.tinkerpop.blueprints.pgm.impls.tg.TinkerGraph;
  */
 public class BlueprintsBase implements Shutdownable {
     private Logger log = null;
-    protected IndexableGraph graph = null;
+    protected IndexableGraph igraph = null;
+    protected KeyIndexableGraph kigraph = null;
     protected TransactionalGraph tgraph = null;
     protected SimpleDateFormat dateFormatter = null;
     private static final String DATE_FORMAT = "yyyy-MM-dd'T'HH:mm:ssZ";
 
     private static final String INDEX_TYPE = "type-idx";
+    private static final String PROPERTY_TYPE = "type";
 
     protected Index<Vertex> typeidx = null;
 
@@ -75,48 +82,76 @@ public class BlueprintsBase implements Shutdownable {
      * @param dburl url of the database for the engine
      * @param config parameters for the engine
      */
-    public BlueprintsBase(String engine, String dburl, Map<String, String> config) {		
+    public BlueprintsBase(String engine, String dburl, Map<String, String> config) {
         log = LoggerFactory.getLogger(BlueprintsBase.class);
         String eng = engine.toLowerCase().trim();
-        log.debug("Requested database: {} url: {}", eng, dburl);
+        log.warn("Requested database: {} url: {}", eng, dburl);
         if (eng.equals("neo4j")) {
             log.info("Opening neo4j graph at: {}", dburl);
-            graph = new Neo4jGraph(dburl, config);
-            tgraph = (TransactionalGraph) graph;
+            kigraph = new Neo4jGraph(dburl, config);
+            tgraph = (TransactionalGraph) kigraph;
+            igraph = (IndexableGraph) kigraph;
         } else if (eng.equals("rexster")) {
             log.warn("Configuration parameters passed to RexsterGraph - Ignored");
             log.info("Opening rexster graph at: {}", dburl);
-            graph = new RexsterGraph(dburl);
+            kigraph = new RexsterGraph(dburl);
+            igraph = (IndexableGraph) kigraph;
         } else if (eng.equals("tinkergraph")) {
             if (config != null) {
                 log.warn("Configuration parameters passed to TinkerGraph - Ignored");
             }
+            log.info("creating new tinkergraph with url: {}", dburl);
             if (dburl == null) {
-                graph = new TinkerGraph();
+                kigraph = new TinkerGraph();
             } else {
-                graph = new TinkerGraph(dburl);
+                kigraph = new TinkerGraph(dburl);
             }
+            igraph = (IndexableGraph) kigraph;
         } else if (eng.equals("neo4jbatch")) {
             log.info("Opening neo4j batch graph at: {}", dburl);
-            graph = new Neo4jBatchGraph(dburl, config);
-            tgraph = (TransactionalGraph) graph;
+            kigraph = new Neo4jBatchGraph(dburl, config);
+            tgraph = (TransactionalGraph) kigraph;
+            igraph = (IndexableGraph) kigraph;
         } else if (eng.equals("orientdb")) {
             String username = config.get("username");
             String password = config.get("password");
             if (username != null && password != null) {
-                graph = new OrientGraph(dburl, username, password);
+                kigraph = new OrientGraph(dburl, username, password);
             } else {
-                graph = new OrientGraph(dburl);
+                kigraph = new OrientGraph(dburl);
             }
-            tgraph = (TransactionalGraph) graph;
+            tgraph = (TransactionalGraph) kigraph;
+            igraph = (IndexableGraph) kigraph;
+        } else if (eng.equals("titan")) {
+            Configuration conf = null;
+            TitanGraph g;
+            if (config != null) {
+                conf = new BaseConfiguration();
+                for (Entry<String, String> e : config.entrySet()) {
+                    conf.setProperty(e.getKey(), e.getValue());
+                }
+            }
+            if (conf != null) {
+                g = TitanFactory.open(conf);
+            } else {
+                g = TitanFactory.open(dburl);
+            }
+            kigraph = (KeyIndexableGraph) g;
+            // igraph = (IndexableGraph) g;
+            tgraph = (TransactionalGraph) g;
         } else {
             log.error("Undefined database engine: {}", eng);
             System.exit(-1);
         }
 
-        log.debug("attempting to fetch index: {}", INDEX_TYPE);
-        typeidx = getOrCreateIndex(INDEX_TYPE);
-
+        if (igraph != null) {
+            log.debug("attempting to fetch index: {}", INDEX_TYPE);
+            typeidx = getOrCreateIndex(INDEX_TYPE);
+        }
+        if (kigraph != null) {
+            createKeyIndex(PROPERTY_TYPE);
+        }
+        
         dateFormatter = new SimpleDateFormat(DATE_FORMAT);
         dateFormatter.setTimeZone(TimeZone.getTimeZone("UTC"));
     }
@@ -131,13 +166,36 @@ public class BlueprintsBase implements Shutdownable {
         this(engine, dburl, null);
     }
 
+    public void dropKeyIndex(String key) {
+        dropKeyIndex(key, Vertex.class);
+    }
+
     /**
      * Drops an index from the specific graph
      * 
-     * @param idxname the name of the index to drop
+     * @param key the name of the index to drop
+     * @param elementClass the class of element to index
+     */
+    public <T extends Element> void dropKeyIndex(String key, Class <T> elementClass) {
+        if (kigraph == null) {
+            log.error("dropKeyIndex - graph is not KeyIndexableGraph");
+        } else {
+            kigraph.dropKeyIndex(key, elementClass);
+        }
+    }
+    
+    /**
+     * Drops a manual index from the graph
+     * 
+     * @deprecated
+     * @param idxname
      */
     public void dropIndex(String idxname) {
-        graph.dropIndex(idxname);
+        if (igraph == null) {
+            log.error("dropIndex - graph is not IndexableGraph");
+        } else {
+            igraph.dropIndex(idxname);
+        }
     }
 
     /**
@@ -151,9 +209,12 @@ public class BlueprintsBase implements Shutdownable {
      */
     public <T extends Element> Index<T> getOrCreateIndex(String idxname, Class<T> idxClass) {
         Index<T> idx = null;
+        if (igraph == null) {
+            log.error("getOrCreateIndex - graph is not IndexableGraph");
+        }
         log.trace("Getting index: {} type: {}", idxname, idxClass.toString());
         try {
-            idx = graph.getIndex(idxname, idxClass);
+            idx = igraph.getIndex(idxname, idxClass);
         } catch (NullPointerException e) {
             log.error("Null pointer exception fetching index: {} {}", idxname, e);
         } catch (RuntimeException e) {
@@ -161,7 +222,7 @@ public class BlueprintsBase implements Shutdownable {
         }
         if (idx == null) {
             log.warn("Creating index {} for class {}", idxname, idxClass.toString());
-            idx = graph.createManualIndex(idxname, idxClass);
+            idx = igraph.createIndex(idxname, idxClass);
         }
         return idx;
     }
@@ -177,6 +238,7 @@ public class BlueprintsBase implements Shutdownable {
         return getOrCreateIndex(idxname, Vertex.class);
     }
 
+    
     /**
      * Helper function to get Edge indexes
      * 
@@ -185,6 +247,19 @@ public class BlueprintsBase implements Shutdownable {
      */
     public Index<Edge> getOrCreateEdgeIndex(String idxname) {
         return (Index<Edge>)getOrCreateIndex(idxname, Edge.class);
+    }
+
+    /**
+     * used for KeyIndexableGraphs to create an index
+     * 
+     * @param idxname the name of the index to create
+     */
+    public void createKeyIndex(String idxname) {
+        createKeyIndex(idxname, Vertex.class);
+    }
+    
+    public <T extends Element> void createKeyIndex(String idxname, Class <T> idxClass) {
+        kigraph.createKeyIndex(idxname, idxClass);
     }
 
     /**
@@ -209,10 +284,10 @@ public class BlueprintsBase implements Shutdownable {
      * @return newly created edge
      */
     public Edge createEdgeIfNotExist(Object id, Vertex outVertex, Vertex inVertex, String edgeLabel) {
-        for (Edge e : outVertex.getOutEdges(edgeLabel)) {
-            if (e.getInVertex().equals(inVertex)) return e;
+        for (Edge e : outVertex.getEdges(Direction.OUT, edgeLabel)) {
+            if (e.getVertex(Direction.IN).equals(inVertex)) return e;
         }
-        Edge re = graph.addEdge(id,  outVertex, inVertex, edgeLabel);
+        Edge re = kigraph.addEdge(id,  outVertex, inVertex, edgeLabel);
         setElementCreateTime(re);
         return re;
     }
@@ -231,47 +306,6 @@ public class BlueprintsBase implements Shutdownable {
     }
 
 
-    /**
-     * Helper function for {@link #createEdgeIfNotExist(Object, Vertex, Vertex, String) that accepts an enum for edge type
-     * 
-     * @param id identifier for the edge, not used by some underlying databases
-     * @param outVertex source vertex
-     * @param inVertex target vertex
-     * @param labelType enum for label on edge
-     * @return newly created edge
-     */
-    public Edge createEdgeIfNotExist(Object id, Vertex outVertex, Vertex inVertex, StringableEnum labelType) {
-        return createEdgeIfNotExist(id, outVertex, inVertex, labelType.toString());		
-    }
-
-    /**
-     * Helper function for {@link #createEdgeIfNotExist(Object, Vertex, Vertex, StringableEnum) that requires no id and accepts an enum for an edge type
-     * @param outVertex source vertex
-     * @param inVertex target vertex
-     * @param labelType enum for label on edge
-     * @return newly created edge
-     */
-    public Edge createEdgeIfNotExist(Vertex outVertex, Vertex inVertex, StringableEnum labelType) {
-        return createEdgeIfNotExist(null, outVertex, inVertex, labelType.toString());
-    }
-
-    /**
-     * Helper function that creates an edge without first checking to see if the edge exists
-     * 
-     * This is most useful when you know that the edge isn't already there as some underlying
-     * graphs through fits when you create multiple edges between the same nodes with the
-     * same label.
-     * 
-     * @param outVertex source vertex
-     * @param inVertex target vertex
-     * @param labelType enum for label on edge
-     * @return newly created edge
-     */
-    public Edge createEdge(Vertex outVertex, Vertex inVertex, StringableEnum labelType) {
-        Edge re = graph.addEdge(null, outVertex, inVertex, labelType.toString());
-        setElementCreateTime(re);
-        return re;
-    }
 
     /**
      * Wrapper function for removing edges.
@@ -283,7 +317,7 @@ public class BlueprintsBase implements Shutdownable {
      * @param e
      */
     public void removeEdge(Edge e) {
-        graph.removeEdge(e);
+        kigraph.removeEdge(e);
     }
 
 
@@ -299,21 +333,11 @@ public class BlueprintsBase implements Shutdownable {
      * @return
      */
     protected Vertex createNakedVertex(String vertexType) {
-        Vertex node = graph.addVertex(null);
+        Vertex node = kigraph.addVertex(null);
         node.setProperty("type", vertexType.toString());
         typeidx.put("type", vertexType.toString(), node);
         setElementCreateTime(node);
         return node;
-    }
-
-    /**
-     * Helper function for createNakedVertex that allows enums
-     * 
-     * @param vertexType an enum of the type of vertex to create
-     * @return
-     */
-    protected Vertex createNakedVertex(StringableEnum vertexType) {
-        return createNakedVertex(vertexType.toString());
     }
 
     /**
@@ -340,54 +364,7 @@ public class BlueprintsBase implements Shutdownable {
         return node;
     }
 
-    /**
-     * Helper function for {@link #getOrCreateVertexHelper(String, Object, String, Index) that accepts an enum
-     * 
-     * @param idcol the name of the column which contains the id
-     * @param idval the value of the id to look up in the index
-     * @param vertexType enum of the type of vertex to create
-     * @param index the index containing the elements
-     * @return the existing vertex or a new vertex
-     */
-    protected Vertex getOrCreateVertexHelper(String idcol, Object idval, StringableEnum vertexType, Index <Vertex> index) {
-        return getOrCreateVertexHelper(idcol, idval, vertexType.toString(), index);
-    }
 
-    /**
-     * Helper function that gets all of the vertices of a particular type from
-     * the database provided they have not been updated in age days.
-     * 
-     * Vertices that lack a last_updated parameter are always returned
-     * 
-     * FIXME: right now this does NOT use indexes
-     * FIXME: is this function EVER used? Maybe deprecate?
-     * 
-     * @deprecated
-     * @param age number of days since last_updated
-     * @param idxname the name of the index to use (currently ignored)
-     * @param vtxtype the type of vertex to examine
-     * @param namefield the name of the field to return in the set
-     * @return
-     */
-    public Set<String> getVertexHelper(double age, String idxname, StringableEnum vtxtype, String fieldname) {
-        Set<String> s = new HashSet<String>();
-        // FIXME: How do we get all of the values from an index?
-        // Right now we iterate over all of the nodes, which is CRAPTASTIC
-        for (Vertex vtx: graph.getVertices()) {
-            Set<String> props = vtx.getPropertyKeys();
-            if (props.contains("type") && vtx.getProperty("type").equals(vtxtype)
-                    && props.contains("username")) {
-                try {
-                    if (!props.contains("last_updated") ||
-                            dateDifference(new Date(), dateFormatter.parse((String)vtx.getProperty("last_updated"))) > age)
-                        s.add((String)vtx.getProperty(fieldname));
-                } catch (ParseException e) {
-                    log.info("Error parsing date: " + vtx.getProperty("last_updated"));
-                }
-            }
-        }
-        return s;
-    }
 
     /**
      * Converts an int (aka unix timestamp) to a java.util.Date object
@@ -468,39 +445,6 @@ public class BlueprintsBase implements Shutdownable {
     }
 
     /**
-     * Passthrough function for setting the transaction buffer size
-     *
-     * If the graph is not transactional a warning message will be raised
-     * 
-     * @param bufferSize the number of modifications allowed between commits
-     */
-    public void setMaxBufferSize(int bufferSize) {
-        if (tgraph != null) {
-            if (bufferSize == 0) {
-                log.debug("Transaction Buffer size set to 0, transactions will be MANUAL");
-            } else {
-                log.debug("Transaction buffer size set to {}", bufferSize);
-            }
-            tgraph.setMaxBufferSize(bufferSize);
-        } else {
-            log.warn("Attempt to set buffer size on non-transactional graph");
-        }
-    }
-
-    /**
-     * Safety wrapper function for starting a transaction
-     * 
-     * a logging warning is raised if the graph is not transactional
-     */
-    public void startTransaction() {
-        if (tgraph != null) {
-            tgraph.startTransaction();
-        } else {
-            log.warn("Attempt start transaction on non-transactional graph");
-        }
-    }
-
-    /**
      * Safety wrapper function for concluding a transaction
      * 
      * a logging warning is raised if the graph is not transactional
@@ -557,17 +501,6 @@ public class BlueprintsBase implements Shutdownable {
     }
 
     /**
-     * Helper for {@link #setProperty(Element, String, String)}
-     * 
-     * @param elem
-     * @param prop
-     * @param property
-     */
-    public void SetProperty(Element elem, StringableEnum prop, String property) {
-        setProperty(elem, prop.toString(), property);
-    }
-
-    /**
      * Formats and sets a date property of an element
      * 
      * NOTE: dates are stored as UNIX timestamps. Thus we can lose
@@ -587,17 +520,6 @@ public class BlueprintsBase implements Shutdownable {
     }
 
     /**
-     * Helper for {@link #setProperty(Element, String, Date)}
-     * 
-     * @param elem
-     * @param prop
-     * @param propdate
-     */
-    public void setProperty(Element elem, StringableEnum prop, Date propdate) {
-        setProperty(elem, prop.toString(), propdate);
-    }
-
-    /**
      * Sets an integer property of an element
      * 
      * @param elem Element to set the property
@@ -607,17 +529,6 @@ public class BlueprintsBase implements Shutdownable {
     public void setProperty(Element elem, String propname, int propvalue) {
         elem.setProperty(propname, propvalue);
         log.trace("{} = {}", propname, propvalue);
-    }
-
-    /**
-     * Helper for {@link #setProperty(Element, String, int)}
-     * 
-     * @param elem
-     * @param prop
-     * @param propvalue
-     */
-    public void setProperty(Element elem, StringableEnum prop, int propvalue) {
-        setProperty(elem, prop.toString(), propvalue);
     }
 
     /**
@@ -633,17 +544,6 @@ public class BlueprintsBase implements Shutdownable {
     }	
 
     /**
-     * Helper for {@link #setProperty(Element, String, long)}
-     * 
-     * @param elem
-     * @param prop
-     * @param propvalue
-     */
-    public void setProperty(Element elem, StringableEnum prop, long propvalue) {
-        setProperty(elem, prop.toString(), propvalue);
-    }
-
-    /**
      * Sets a double property of an element
      * 
      * @param elem Element to set the property
@@ -656,16 +556,6 @@ public class BlueprintsBase implements Shutdownable {
     }
 
     /**
-     * Helper for {@link #setProperty(Element, String, double)}
-     * @param elem
-     * @param prop
-     * @param propvalue
-     */
-    public void setProperty(Element elem, StringableEnum prop, double propvalue) {
-        setProperty(elem, prop.toString(), propvalue);
-    }
-
-    /**
      * Sets a boolean property of an element
      * 
      * @param elem Element to set the property
@@ -675,16 +565,6 @@ public class BlueprintsBase implements Shutdownable {
     public void setProperty(Element elem, String propname, boolean propvalue) {
         elem.setProperty(propname, propvalue);
         log.trace("{} = {}", propname, propvalue);
-    }
-
-    /**
-     * Helper for {@link #setProperty(Element, String, boolean)}
-     * @param elem
-     * @param prop
-     * @param propvalue
-     */
-    public void setProperty(Element elem, StringableEnum prop, boolean propvalue) {
-        setProperty(elem, prop.toString(), propvalue);
     }
 
     /**
@@ -703,20 +583,6 @@ public class BlueprintsBase implements Shutdownable {
             elem.setProperty(propname, propvalue);
             log.trace("{} = {}", propname, propvalue);
         }
-    }
-
-    /**
-     * Sets a generic property of an element
-     * 
-     * This method then defers to the string based versions of setProperty. It's a
-     * convenience method.
-     * 
-     * @param elem Element to set the property
-     * @param prop Enum of property
-     * @param propvalue object to set as value
-     */
-    public void setProperty(Element elem, StringableEnum prop, Object propvalue) {
-        setProperty(elem, prop.toString(), propvalue);
     }
 
     /**
@@ -743,7 +609,7 @@ public class BlueprintsBase implements Shutdownable {
      */
     public void shutdown() {
         log.info("Shutting down graph database engine");
-        graph.shutdown();
+        kigraph.shutdown();
         log.trace("Graph shutdown complete");
     }
 }
