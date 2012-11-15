@@ -40,6 +40,7 @@ import org.slf4j.LoggerFactory;
 
 import com.thinkaurelius.titan.core.TitanFactory;
 import com.thinkaurelius.titan.core.TitanGraph;
+import com.thinkaurelius.titan.core.TitanTransaction;
 import com.tinkerpop.blueprints.Direction;
 import com.tinkerpop.blueprints.Edge;
 import com.tinkerpop.blueprints.Element;
@@ -58,6 +59,10 @@ import com.tinkerpop.blueprints.impls.tg.TinkerGraph;
  * @author patrick
  *
  */
+/**
+ * @author pwagstro
+ *
+ */
 public class BlueprintsBase implements Shutdownable {
     private Logger log = null;
     protected IndexableGraph igraph = null;
@@ -68,10 +73,10 @@ public class BlueprintsBase implements Shutdownable {
     private static final String DATE_FORMAT = "yyyy-MM-dd'T'HH:mm:ssZ";
 
     private static final String INDEX_TYPE = "type-idx";
-    private static final String PROPERTY_TYPE = "type";
+    private static final String PROPERTY_TYPE = "_type";
 
     protected Index<Vertex> typeidx = null;
-
+    
     /**
      * Full constructor that takes an engine, a url, and a map for a configuration
      * 
@@ -84,10 +89,10 @@ public class BlueprintsBase implements Shutdownable {
      * @param config parameters for the engine
      */
     public BlueprintsBase(String engine, String dburl, Map<String, String> config) {
-        log = LoggerFactory.getLogger(BlueprintsBase.class);
+        startConstructor();
         String eng = engine.toLowerCase().trim();
         dbengine = eng;
-        log.warn("Requested database: {} url: {}", eng, dburl);
+        log.debug("Requested database: {} url: {}", eng, dburl);
         if (eng.equals(Engine.NEO4J)) {
             log.info("Opening neo4j graph at: {}", dburl);
             kigraph = new Neo4jGraph(dburl, config);
@@ -143,23 +148,12 @@ public class BlueprintsBase implements Shutdownable {
                 g = TitanFactory.open(dburl);
             }
             kigraph = (KeyIndexableGraph) g;
-            // igraph = (IndexableGraph) g;
             tgraph = (TransactionalGraph) g;
         } else {
             log.error("Undefined database engine: {}", eng);
             System.exit(-1);
         }
-
-        if (igraph != null) {
-            log.debug("attempting to fetch index: {}", INDEX_TYPE);
-            typeidx = getOrCreateIndex(INDEX_TYPE);
-        }
-        if (kigraph != null) {
-            createKeyIndex(PROPERTY_TYPE);
-        }
-        
-        dateFormatter = new SimpleDateFormat(DATE_FORMAT);
-        dateFormatter.setTimeZone(TimeZone.getTimeZone("UTC"));
+        finishConstructor();
     }
 
     /**
@@ -170,6 +164,44 @@ public class BlueprintsBase implements Shutdownable {
      */
     public BlueprintsBase(String engine, String dburl) {
         this(engine, dburl, null);
+    }
+
+    /**
+     * A simple constructor used when creating a new graph
+     * 
+     * @param graph - the TitanGraph from StartTransaction
+     */
+    private BlueprintsBase(TitanTransaction graph) {
+        startConstructor();
+        log.warn("XXXXXXXX:");
+        log.warn("XXXXXXXX:");
+        log.warn("XXXXXXXX:");
+        log.warn("XXXXXXXX: new graph for transaction....");
+        kigraph = (KeyIndexableGraph) graph;
+        tgraph = (TransactionalGraph) graph;
+        // finishConstructor();
+    }
+
+    /**
+     * Operations that should be called at the beginning of the constructor.
+     * 
+     * Ideally I'd find a way to do this with a private constructor, but
+     * for some reason that's not working.
+     */
+    private void startConstructor() {
+        log = LoggerFactory.getLogger(BlueprintsBase.class);
+        dateFormatter = new SimpleDateFormat(DATE_FORMAT);
+        dateFormatter.setTimeZone(TimeZone.getTimeZone("UTC"));
+    }
+    
+    private void finishConstructor() {
+        if (this.supportsIndexes()) {
+            log.debug("attempting to fetch index: {}", INDEX_TYPE);
+            typeidx = getOrCreateIndex(INDEX_TYPE);
+        }
+        if (this.supportsKeyIndexes()) {
+            createKeyIndex(PROPERTY_TYPE);
+        }
     }
 
     public void dropKeyIndex(String key) {
@@ -183,8 +215,10 @@ public class BlueprintsBase implements Shutdownable {
      * @param elementClass the class of element to index
      */
     public <T extends Element> void dropKeyIndex(String key, Class <T> elementClass) {
-        if (kigraph == null) {
+        if (!this.supportsKeyIndexes()) {
             log.error("dropKeyIndex - graph is not KeyIndexableGraph");
+        } else if (this.dbengine.equals(Engine.TITAN)) {
+            log.warn("engine {} does not support dropKeyIndex", this.dbengine);
         } else {
             kigraph.dropKeyIndex(key, elementClass);
         }
@@ -193,11 +227,10 @@ public class BlueprintsBase implements Shutdownable {
     /**
      * Drops a manual index from the graph
      * 
-     * @deprecated
      * @param idxname
      */
     public void dropIndex(String idxname) {
-        if (igraph == null) {
+        if (!this.supportsIndexes()) {
             log.error("dropIndex - graph is not IndexableGraph");
         } else {
             igraph.dropIndex(idxname);
@@ -215,8 +248,9 @@ public class BlueprintsBase implements Shutdownable {
      */
     public <T extends Element> Index<T> getOrCreateIndex(String idxname, Class<T> idxClass) {
         Index<T> idx = null;
-        if (igraph == null) {
+        if (!this.supportsIndexes()) {
             log.error("getOrCreateIndex - graph is not IndexableGraph");
+            return null;
         }
         log.trace("Getting index: {} type: {}", idxname, idxClass.toString());
         try {
@@ -340,8 +374,12 @@ public class BlueprintsBase implements Shutdownable {
      */
     protected Vertex createNakedVertex(String vertexType) {
         Vertex node = kigraph.addVertex(null);
-        node.setProperty("type", vertexType.toString());
-        typeidx.put("type", vertexType.toString(), node);
+        if (vertexType != null) {
+            node.setProperty(PROPERTY_TYPE, vertexType);
+            if (this.supportsIndexes()) {
+                typeidx.put(PROPERTY_TYPE, vertexType, node);
+            }
+        }
         setElementCreateTime(node);
         return node;
     }
@@ -357,15 +395,27 @@ public class BlueprintsBase implements Shutdownable {
      */
     protected Vertex getOrCreateVertexHelper(String idcol, Object idval, String vertexType, Index <Vertex> index) {
         Vertex node = null;
-        Iterable<Vertex> results = index.get(idcol, idval);
-        for (Vertex v : results) {
-            node = v;
-            break;
+        if (this.supportsIndexes() && index != null) {
+            Iterable<Vertex> results = index.get(idcol, idval);
+            for (Vertex v : results) {
+                node = v;
+                break;
+            }
+        } else if (this.supportsKeyIndexes()) {
+            for (Vertex v : kigraph.getVertices(idcol, idval)) {
+                log.warn("type: {}", v.getProperty(PROPERTY_TYPE));
+                if (v.getProperty(PROPERTY_TYPE).equals(vertexType)) {
+                    node = v;
+                    break;
+                }
+            }
         }
         if (node == null) {
             node = createNakedVertex(vertexType);
             node.setProperty(idcol, idval);
-            index.put(idcol, idval, node);
+            if (this.supportsIndexes() && index != null) {
+                index.put(idcol, idval, node);
+            }
         }
         return node;
     }
@@ -450,13 +500,32 @@ public class BlueprintsBase implements Shutdownable {
         return diff;
     }
 
+    
+    /**
+     * Starts a new transaction. As of right now this is only needed for Titan.
+     * 
+     * It is automatically called after stopping or rolling back a transaction
+     */
+    public BlueprintsBase startTransaction() {
+        if (this.supportsTransactions()) {
+            if (getDbengine().equals(Engine.TITAN)) {
+                return new BlueprintsBase(((TitanGraph) tgraph).startTransaction());
+            } else {
+                return this;
+            }
+        } else {
+            log.warn("Attempt to start transaction on non-transactional graph: {}", this.dbengine);
+        }
+        return null;
+    }
+    
     /**
      * Safety wrapper function for concluding a transaction
      * 
      * a logging warning is raised if the graph is not transactional
      */
     public void stopTransaction() {
-        if (tgraph != null) {
+        if (this.supportsTransactions()) {
             tgraph.stopTransaction(TransactionalGraph.Conclusion.SUCCESS);
         } else {
             log.warn("Attempt to stop transaction on non-transactional graph");
@@ -469,7 +538,7 @@ public class BlueprintsBase implements Shutdownable {
      * a logging warning is raised if the graph is not transactional
      */
     public void rollbackTransaction() {
-        if (tgraph != null) {
+        if (this.supportsTransactions()) {
             tgraph.stopTransaction(TransactionalGraph.Conclusion.FAILURE);
         } else {
             log.warn("Attempt to rollback transaction on non-transactional graph");

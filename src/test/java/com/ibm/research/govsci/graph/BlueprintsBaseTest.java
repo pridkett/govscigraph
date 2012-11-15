@@ -33,6 +33,9 @@ public class BlueprintsBaseTest {
     private String dburl = null;
     private Map<String, String> config = null;
     private BlueprintsBase b;
+    private static final String VERTEX_TYPE = "dummyType";
+    private static final String EDGE_LABEL = "dummyLabel";
+    private static final String VERTEX_STRING_PROPERTY = "testStringProperty";
     
     public BlueprintsBaseTest(String dbengine, String dburl, Map<String, String> config) {
         this.dbengine = dbengine;
@@ -48,6 +51,7 @@ public class BlueprintsBaseTest {
                 {Engine.TITAN, "::folder::", null},
                 {Engine.ORIENTDB, "memory:unittest", null}
         };
+        // data = new Object[][] { {Engine.TITAN, "::folder::", null} };
         return Arrays.asList(data);
     }
     
@@ -135,44 +139,44 @@ public class BlueprintsBaseTest {
 
     @Test
     public void testSetElementCreateTime() {
-        Vertex v = b.createNakedVertex("dummyType");
+        Vertex v = b.createNakedVertex(VERTEX_TYPE);
         b.setElementCreateTime(v);
     }
 
     @Test
     public void testCreateEdgeIfNotExistObjectVertexVertexString() {
-        Vertex v1 = b.createNakedVertex("dummyType");
-        Vertex v2 = b.createNakedVertex("dummyType");
-        Edge e1 = b.createEdgeIfNotExist(null, v1, v2, "dummyLabel");
+        Vertex v1 = b.createNakedVertex(VERTEX_TYPE);
+        Vertex v2 = b.createNakedVertex(VERTEX_TYPE);
+        Edge e1 = b.createEdgeIfNotExist(null, v1, v2, EDGE_LABEL);
     }
 
     @Test
     public void testCreateEdgeIfNotExistVertexVertexString() {
-        Vertex v1 = b.createNakedVertex("dummyType");
-        Vertex v2 = b.createNakedVertex("dummyType");
-        Edge e1 = b.createEdgeIfNotExist(v1, v2, "dummyLabel");
+        Vertex v1 = b.createNakedVertex(VERTEX_TYPE);
+        Vertex v2 = b.createNakedVertex(VERTEX_TYPE);
+        Edge e1 = b.createEdgeIfNotExist(v1, v2, EDGE_LABEL);
     }
 
     @Test
     public void testRemoveEdge() {
-        Vertex v1 = b.createNakedVertex("dummyType");
-        Vertex v2 = b.createNakedVertex("dummyType");
-        Edge e1 = b.createEdgeIfNotExist(v1, v2, "dummyLabel");
+        Vertex v1 = b.createNakedVertex(VERTEX_TYPE);
+        Vertex v2 = b.createNakedVertex(VERTEX_TYPE);
+        Edge e1 = b.createEdgeIfNotExist(v1, v2, EDGE_LABEL);
         b.removeEdge(e1);
     }
 
     @Test
     public void testCreateNakedVertex() {
-        b.createNakedVertex("dummyType");
+        b.createNakedVertex(VERTEX_TYPE);
     }
 
     @Test
     public void testGetOrCreateVertexHelper() {
         Index<Vertex> idx = b.getOrCreateIndex("test-idx");
-        Vertex v1 = b.getOrCreateVertexHelper("testIdCol", "testVal", "dummyType", idx);
-        b.setProperty(v1, "testStringProperty", "foo");
-        Vertex v2 = b.getOrCreateVertexHelper("testIdCol", "testVal", "dummyType", idx);
-        assertTrue(v1.getProperty("testStringProperty").equals(v2.getProperty("testStringProperty")));
+        Vertex v1 = b.getOrCreateVertexHelper("testIdCol", "testVal", VERTEX_TYPE, idx);
+        b.setProperty(v1, VERTEX_STRING_PROPERTY, "foo");
+        Vertex v2 = b.getOrCreateVertexHelper("testIdCol", "testVal", VERTEX_TYPE, idx);
+        assertTrue(v1.getProperty(VERTEX_STRING_PROPERTY).equals(v2.getProperty(VERTEX_STRING_PROPERTY)));
     }
 
     @Test
@@ -185,20 +189,35 @@ public class BlueprintsBaseTest {
 
     @Test
     public void testStopTransaction() {
-        Vertex v1 = b.createNakedVertex("dummyType");
+        Vertex v1 = b.createNakedVertex(VERTEX_TYPE);
         b.stopTransaction();
-        Vertex v2 = b.createNakedVertex("dummyType");
+        Vertex v2 = b.createNakedVertex(VERTEX_TYPE);
     }
 
     @Test
     public void testRollbackTransaction() {
         if (b.supportsTransactions()) {
-            Vertex v1 = b.createNakedVertex("dummyType");
-            b.setProperty(v1, "testStringProperty", "foo");
-            b.stopTransaction();
-            b.setProperty(v1, "testStringProperty", "bar");
-            b.rollbackTransaction();
-            assertTrue(v1.getProperty("testStringProperty").equals("foo"));
+            // create the key index
+            b.createKeyIndex(VERTEX_STRING_PROPERTY);
+            Vertex v1 = b.getOrCreateVertexHelper(VERTEX_STRING_PROPERTY, "test", VERTEX_TYPE, null);
+            
+            // sub transaction 1
+            BlueprintsBase b2 = b.startTransaction();
+            v1 = b.getOrCreateVertexHelper(VERTEX_STRING_PROPERTY, "test", VERTEX_TYPE, null);
+            b2.setProperty(v1, VERTEX_STRING_PROPERTY, "foo");
+            b2.stopTransaction();
+            
+            // sub transaction 2
+            b2 = b.startTransaction();
+            v1 = b2.getOrCreateVertexHelper(VERTEX_STRING_PROPERTY, "foo", VERTEX_TYPE, null);
+            b2.setProperty(v1, VERTEX_STRING_PROPERTY, "bar");
+            assertTrue(v1.getProperty(VERTEX_STRING_PROPERTY).equals("bar"));
+            b2.rollbackTransaction();
+            
+            // check in main transaction loop if anything changed
+            v1 = b.getOrCreateVertexHelper(VERTEX_STRING_PROPERTY, "foo", VERTEX_TYPE, null);
+            log.warn("XXXXXXX: {}", v1.getProperty(VERTEX_STRING_PROPERTY));
+            assertTrue(v1.getProperty(VERTEX_STRING_PROPERTY).equals("foo"));
         }
     }
 
@@ -206,7 +225,7 @@ public class BlueprintsBaseTest {
     public void testAddToIndexIfNotPresent() {
         if (b.supportsIndexes()) {
             Index<Vertex> idx = b.getOrCreateIndex("test-idx");
-            Vertex v1 = b.createNakedVertex("dummyType");
+            Vertex v1 = b.createNakedVertex(VERTEX_TYPE);
             assertTrue(b.addToIndexIfNotPresent("testIdCol", "testVal", v1, idx));
             assertFalse(b.addToIndexIfNotPresent("testIdCol", "testVal", v1, idx));
         } else {
@@ -217,7 +236,7 @@ public class BlueprintsBaseTest {
 
     @Test
     public void testSetPropertyElementStringString() {
-        Vertex v1 = b.createNakedVertex("dummyType");
+        Vertex v1 = b.createNakedVertex(VERTEX_TYPE);
         b.setProperty(v1, "testProperty", "testValue");
         assertTrue(v1.getProperty("testProperty").equals("testValue"));
     }
@@ -225,34 +244,34 @@ public class BlueprintsBaseTest {
     @Test
     public void testSetPropertyElementStringDate() {
         Date d = new Date();
-        Vertex v1 = b.createNakedVertex("dummyType");
+        Vertex v1 = b.createNakedVertex(VERTEX_TYPE);
         b.setProperty(v1, "testDateProperty", d);
     }
 
     @Test
     public void testSetPropertyElementStringInt() {
-        Vertex v1 = b.createNakedVertex("dummyType");
+        Vertex v1 = b.createNakedVertex(VERTEX_TYPE);
         b.setProperty(v1, "testIntProperty", 3);
         assertEquals(v1.getProperty("testIntProperty"), 3);
     }
 
     @Test
     public void testSetPropertyElementStringLong() {
-        Vertex v1 = b.createNakedVertex("dummyType");
+        Vertex v1 = b.createNakedVertex(VERTEX_TYPE);
         b.setProperty(v1, "testLongProperty", 1L);
         assertEquals(v1.getProperty("testLongProperty"), 1L);
     }
 
     @Test
     public void testSetPropertyElementStringDouble() {
-        Vertex v1 = b.createNakedVertex("dummyType");
+        Vertex v1 = b.createNakedVertex(VERTEX_TYPE);
         b.setProperty(v1, "testDoubleProperty", 1.5);
         assertTrue(Math.abs(((Double)v1.getProperty("testDoubleProperty")) - 1.5) < 0.0001);
     }
 
     @Test
     public void testSetPropertyElementStringBoolean() {
-        Vertex v1 = b.createNakedVertex("dummyType");
+        Vertex v1 = b.createNakedVertex(VERTEX_TYPE);
         b.setProperty(v1, "testBooleanProperty", true);
         assertEquals(v1.getProperty("testBooleanProperty"), true);
     }
@@ -260,16 +279,16 @@ public class BlueprintsBaseTest {
     @Test
     public void testSetPropertyElementStringObject() {
         Object o = new String("foo");
-        Vertex v1 = b.createNakedVertex("dummyType");
+        Vertex v1 = b.createNakedVertex(VERTEX_TYPE);
         b.setProperty(v1, "testObjectProperty", o);
     }
 
     @Test
     public void testSetPropertyIfNull() {
-        Vertex v1 = b.createNakedVertex("dummyType");
-        b.setPropertyIfNull(v1, "testStringProperty", "test1");
-        b.setPropertyIfNull(v1, "testStringProperty", "test2");
-        assertTrue(v1.getProperty("testStringProperty").equals("test1"));
+        Vertex v1 = b.createNakedVertex(VERTEX_TYPE);
+        b.setPropertyIfNull(v1, VERTEX_STRING_PROPERTY, "test1");
+        b.setPropertyIfNull(v1, VERTEX_STRING_PROPERTY, "test2");
+        assertTrue(v1.getProperty(VERTEX_STRING_PROPERTY).equals("test1"));
     }
 
     @Test
