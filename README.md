@@ -31,3 +31,31 @@ Using the Package
 In most cases you'll want to create a database management class that extends
 BlueprintsBase. And start initialize the graph with something like:
     super("neo4j","/tmp/graph.db", null)
+
+
+Todo List
+=========
+
+* Titan database support only allows a single level of transactions right now.
+This shouldn't be that much of an issue because in most cases Titan is used in
+modes that don't allow transactions.
+
+Limitations
+===========
+[Blueprints][blueprints] already tries to smooth over a lot of the issues when
+using multiple different graph databases and GovSciGraph goes a few steps
+further. Therefore, it is expected that there will be some limitations of the
+the implementations.
+
+neo4jbatch
+----------
+
+Neo4jBatch mode does not support all methods of Blueprints base. In particular
+methods that require traversing elements of the graph, checking if an element
+already exists, and lookups in indexes are not supported. Those methods are:
+
+* `BlueprintsBase.removeEdge`
+* `BlueprintsBase.createEdgeIfNotExist`
+* `BlueprintsBase.dropIndex`
+* `BlueprintsBase.addToIndexIfNotPresent`
+* `BlueprintsBase.getOrCreateVertexHelper`

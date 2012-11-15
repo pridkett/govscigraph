@@ -49,7 +49,8 @@ public class BlueprintsBaseTest {
                 {Engine.TINKERGRAPH, "::nofolder::", null},
                 {Engine.NEO4J, "::folder::", null},
                 {Engine.TITAN, "::folder::", null},
-                {Engine.ORIENTDB, "memory:unittest", null}
+                {Engine.ORIENTDB, "memory:unittest", null},
+                {Engine.NEO4JBATCH, "::folder::", null},
         };
         // data = new Object[][] { {Engine.TITAN, "::folder::", null} };
         return Arrays.asList(data);
@@ -117,6 +118,10 @@ public class BlueprintsBaseTest {
 
     @Test
     public void testDropIndex() {
+        // neo4jbatch does not support dropping indexes
+        if (dbengine.equals(Engine.NEO4JBATCH)) {
+            return;
+        }
         b.getOrCreateIndex("test-idx");
         b.dropIndex("test-idx");
     }
@@ -145,6 +150,11 @@ public class BlueprintsBaseTest {
 
     @Test
     public void testCreateEdgeIfNotExistObjectVertexVertexString() {
+        // neo4jbatch does not support searching edges to see if they
+        // already exist
+        if (dbengine.equals(Engine.NEO4JBATCH)) {
+            return;
+        }
         Vertex v1 = b.createNakedVertex(VERTEX_TYPE);
         Vertex v2 = b.createNakedVertex(VERTEX_TYPE);
         Edge e1 = b.createEdgeIfNotExist(null, v1, v2, EDGE_LABEL);
@@ -152,6 +162,9 @@ public class BlueprintsBaseTest {
 
     @Test
     public void testCreateEdgeIfNotExistVertexVertexString() {
+        if (dbengine.equals(Engine.NEO4JBATCH)) {
+            return;
+        }
         Vertex v1 = b.createNakedVertex(VERTEX_TYPE);
         Vertex v2 = b.createNakedVertex(VERTEX_TYPE);
         Edge e1 = b.createEdgeIfNotExist(v1, v2, EDGE_LABEL);
@@ -159,6 +172,10 @@ public class BlueprintsBaseTest {
 
     @Test
     public void testRemoveEdge() {
+        // neo4jbatch does not support removing edges
+        if (dbengine.equals(Engine.NEO4JBATCH)) {
+            return;
+        }
         Vertex v1 = b.createNakedVertex(VERTEX_TYPE);
         Vertex v2 = b.createNakedVertex(VERTEX_TYPE);
         Edge e1 = b.createEdgeIfNotExist(v1, v2, EDGE_LABEL);
@@ -172,6 +189,9 @@ public class BlueprintsBaseTest {
 
     @Test
     public void testGetOrCreateVertexHelper() {
+        if (dbengine.equals(Engine.NEO4JBATCH)) {
+            return;
+        }
         Index<Vertex> idx = b.getOrCreateIndex("test-idx");
         Vertex v1 = b.getOrCreateVertexHelper("testIdCol", "testVal", VERTEX_TYPE, idx);
         b.setProperty(v1, VERTEX_STRING_PROPERTY, "foo");
@@ -223,6 +243,9 @@ public class BlueprintsBaseTest {
 
     @Test
     public void testAddToIndexIfNotPresent() {
+        if (dbengine.equals(Engine.NEO4JBATCH)) {
+            return;
+        }
         if (b.supportsIndexes()) {
             Index<Vertex> idx = b.getOrCreateIndex("test-idx");
             Vertex v1 = b.createNakedVertex(VERTEX_TYPE);

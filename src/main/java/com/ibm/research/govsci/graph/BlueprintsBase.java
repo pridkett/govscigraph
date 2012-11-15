@@ -56,15 +56,11 @@ import com.tinkerpop.blueprints.impls.rexster.RexsterGraph;
 import com.tinkerpop.blueprints.impls.tg.TinkerGraph;
 
 /**
- * @author patrick
- *
- */
-/**
  * @author pwagstro
  *
  */
 public class BlueprintsBase implements Shutdownable {
-    private Logger log = null;
+    private static final Logger log = LoggerFactory.getLogger(BlueprintsBase.class);
     protected IndexableGraph igraph = null;
     protected KeyIndexableGraph kigraph = null;
     protected TransactionalGraph tgraph = null;
@@ -116,8 +112,11 @@ public class BlueprintsBase implements Shutdownable {
             igraph = (IndexableGraph) kigraph;
         } else if (eng.equals(Engine.NEO4JBATCH)) {
             log.info("Opening neo4j batch graph at: {}", dburl);
-            kigraph = new Neo4jBatchGraph(dburl, config);
-            tgraph = (TransactionalGraph) kigraph;
+            if (config == null) {
+                kigraph = new Neo4jBatchGraph(dburl);
+            } else {
+                kigraph = new Neo4jBatchGraph(dburl, config);
+            }
             igraph = (IndexableGraph) kigraph;
         } else if (eng.equals(Engine.ORIENTDB)) {
             String username = null;
@@ -189,7 +188,6 @@ public class BlueprintsBase implements Shutdownable {
      * for some reason that's not working.
      */
     private void startConstructor() {
-        log = LoggerFactory.getLogger(BlueprintsBase.class);
         dateFormatter = new SimpleDateFormat(DATE_FORMAT);
         dateFormatter.setTimeZone(TimeZone.getTimeZone("UTC"));
     }
