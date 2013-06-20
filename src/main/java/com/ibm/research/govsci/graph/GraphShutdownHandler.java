@@ -41,27 +41,36 @@ import org.slf4j.LoggerFactory;
  * @author Patrick Wagstrom <pwagstro@us.ibm.com>
  */
 public class GraphShutdownHandler extends Thread {
-	private Logger log = null;
-	protected ArrayList<Shutdownable> elems = null;
-	
-	public GraphShutdownHandler() {
-		super();
-		log = LoggerFactory.getLogger(GraphShutdownHandler.class);
-		elems = new ArrayList<Shutdownable>();
-	}
-	
-	public void addShutdownHandler(Shutdownable sd) {
-		log.trace("Addding shutdown handler: {}", sd);
-		elems.add(sd);
-	}
-	
-	@Override()
-	public void run() {
-		log.debug("Invoking Shutdown Handlers");
-		for (Shutdownable sd : elems) {
-			log.trace("Invoking shutdown handler: {}", sd);
-			sd.shutdown();
-		}
-	}
-	
+    private Logger log = null;
+    protected ArrayList<Shutdownable> elems = null;
+
+    public GraphShutdownHandler() {
+        super();
+        log = LoggerFactory.getLogger(GraphShutdownHandler.class);
+        elems = new ArrayList<Shutdownable>();
+    }
+
+    public void addShutdownHandler(Shutdownable sd) {
+        log.trace("Addding shutdown handler: {}", sd);
+        if (sd == null) {
+            log.warn("addShutdownHandler passed null");
+        } else {
+            elems.add(sd);
+        }
+    }
+
+    @Override()
+    public void run() {
+        log.debug("Invoking Shutdown Handlers");
+        for (Shutdownable sd : elems) {
+            if (sd != null) {
+                log.trace("Invoking shutdown handler: {}", sd);
+                sd.shutdown();
+            } else {
+                log.warn("Shutdown Handler trying to shut down null element");
+            }
+        }
+        elems = new ArrayList<Shutdownable>();
+    }
+
 }
